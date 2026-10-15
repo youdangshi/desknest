@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DeskNest.App/DeskNest.App.csproj" />
+    <Project Path="src/DeskNest.Core/DeskNest.Core.csproj" />
+    <Project Path="src/DeskNest.Module.AiBridge/DeskNest.Module.AiBridge.csproj" />
+    <Project Path="src/DeskNest.Module.ApiPanel/DeskNest.Module.ApiPanel.csproj" />
+    <Project Path="src/DeskNest.Module.ComfyUI/DeskNest.Module.ComfyUI.csproj" />
+    <Project Path="src/DeskNest.Module.PerfMonitor/DeskNest.Module.PerfMonitor.csproj" />
+    <Project Path="src/DeskNest.Module.Pet/DeskNest.Module.Pet.csproj" />
+    <Project Path="src/DeskNest.Module.PowerSchedule/DeskNest.Module.PowerSchedule.csproj" />
+    <Project Path="src/DeskNest.Module.UsageStats/DeskNest.Module.UsageStats.csproj" />
+    <Project Path="src/DeskNest.Native/DeskNest.Native.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DeskNest.Tests/DeskNest.Tests.csproj" />
+  </Folder>
+</Solution>

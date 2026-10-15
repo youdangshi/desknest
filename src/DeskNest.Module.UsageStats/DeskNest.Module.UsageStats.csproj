@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>DeskNest.Module.UsageStats</RootNamespace>
+    <AssemblyName>DeskNest.Module.UsageStats</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DeskNest.Core\DeskNest.Core.csproj" />
+  </ItemGroup>
+</Project>

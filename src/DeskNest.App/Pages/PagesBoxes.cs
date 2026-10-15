@@ -1,0 +1,359 @@
+using System.Windows;
+using System.Windows.Controls;
+using DeskNest.App.Host;
+using DeskNest.App.Ui;
+using DeskNest.App.Windows;
+using DeskNest.Core;
+using DeskNest.Core.Data;
+using DeskNest.Core.Services;
+
+namespace DeskNest.App.Pages;
+
+public static class BoxesPage
+{
+    public static UIElement Build(MainWindow host)
+    {
+        var col = UiKit.Col();
+        col.Children.Add(UiKit.PageHeader("收纳盒", "桌面上的分类容器。文件会被移动进盒子的存储目录，删除盒子时会自动还原。"));
+
+        col.Children.Add(UiKit.Section("新建",
+            UiKit.ActionRow("📁", "文件夹归集", "在桌面按类型建文件夹，文件真的收进去（习惯用文件夹管理的人）", "新建",
+                () => NewBoxDialog(host, folderMode: true)),
+            UiKit.ActionRow("🧲", "桌面分区（推荐）", "文件收进桌面上的盒子，桌面不留文件夹，一眼看到分类", "新建",
+                () => NewBoxDialog(host, folderMode: false), true)));
+
+        var cards = new List<UIElement>();
+        foreach (var box in AppServices.Repo.Boxes())
+        {
+            var captured = box;
+            var rows = new List<UIElement>
+            {
+                UiKit.InputRow("🏷", "名称", KindText(captured.Kind), captured.Name, v =>
+                {
+                    captured.Name = v;
+                    AppServices.Repo.Upsert(captured);
+                }, 180),
+                UiKit.Row("📂", "存储位置", BoxWindow.StorageRootOf(captured), UiKit.Btn("打开", () =>
+                {
+                    var root = BoxWindow.StorageRootOf(captured);
+                    Directory.CreateDirectory(root);
+                    System.Diagnostics.Process.Start("explorer.exe", "\"" + root + "\"");
+                })),
+                UiKit.ToggleRow("👁", "在桌面上显示", $"当前 {AppServices.Repo.Items(captured.Id, captured.Kind == BoxKind.Mapped).Count} 个文件项",
+                    !captured.IsHidden, v =>
+                    {
+                        captured.IsHidden = !v;
+                        AppServices.Repo.Upsert(captured);
+                        (Application.Current as App)?.Desktop.ReloadBoxes();
+                    }),
+                UiKit.SliderRow("🌫", "透明度", null, 0.2, 1.0, captured.Opacity, v =>
+                {
+                    captured.Opacity = Math.Round(v, 2);
+                    AppServices.Repo.Upsert(captured);
+                    (Application.Current as App)?.Desktop.ApplyLookToAll();
+                }, captured.Opacity.ToString("0.00")),
+                UiKit.SliderRow("🔳", "图标大小", "也可以按住 Ctrl + 滚轮直接在桌面上调", 18, 72, captured.IconSize, v =>
+                {
+                    captured.IconSize = (int)v;
+                    AppServices.Repo.Upsert(captured);
+                    (Application.Current as App)?.Desktop.ReloadBoxes();
+                }, ((int)captured.IconSize).ToString()),
+                UiKit.SliderRow("⬜", "圆角", null, 0, 28, captured.CornerRadius, v =>
+                {
+                    captured.CornerRadius = (int)v;
+                    AppServices.Repo.Upsert(captured);
+                    (Application.Current as App)?.Desktop.ApplyLookToAll();
+                }, ((int)captured.CornerRadius).ToString()),
+                UiKit.ComboRow("🪟", "材质", null, new[] { "Acrylic", "Mica", "Solid" }, captured.Material, m =>
+                {
+                    captured.Material = m;
+                    AppServices.Repo.Upsert(captured);
+                    (Application.Current as App)?.Desktop.ApplyLookToAll();
+                }),
+                UiKit.ComboRow("📋", "视图", null, new[] { "Icon", "List" }, captured.ViewMode, m =>
+                {
+                    captured.ViewMode = m;
+                    AppServices.Repo.Upsert(captured);
+                    (Application.Current as App)?.Desktop.ReloadBoxes();
+                }),
+                UiKit.ToggleRow("🎨", "单独样式（不跟随全局）", "每个盒子都可以和别的盒子长得不一样",
+                    captured.StyleScope == StyleScope.Override, v =>
+                    {
+                        captured.StyleScope = v ? StyleScope.Override : StyleScope.Inherit;
+                        AppServices.Repo.Upsert(captured);
+                        (Application.Current as App)?.Desktop.ApplyLookToAll();
+                    }),
+                UiKit.ToggleRow("🔒", "锁定位置 / 尺寸", null, captured.LockPosition && captured.LockSize, v =>
+                {
+                    captured.LockPosition = v;
+                    captured.LockSize = v;
+                    AppServices.Repo.Upsert(captured);
+                }),
+                UiKit.ActionRow("🗑", "删除这个盒子", "盒内文件会逐个还原到原位置（原位置不存在则还原到桌面）", "删除", () =>
+                {
+                    var ok = MessageBox.Show($"删除盒子「{captured.Name}」并把盒内文件还原到原位置？", "删除收纳盒",
+                        MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                    if (ok != MessageBoxResult.OK) return;
+                    if (captured.Kind != BoxKind.Mapped)
+                    {
+                        foreach (var item in AppServices.Repo.Items(captured.Id, false))
+                            AppServices.FileOps.RestoreToOriginal(item.StoredPath ?? item.SourcePath, item.SourcePath);
+                    }
+                    AppServices.Repo.DeleteBox(captured.Id);
+                    (Application.Current as App)?.Desktop.ReloadBoxes();
+                    host.RefreshCurrent();
+                })
+            };
+            cards.Add(UiKit.Section(captured.Name, rows.ToArray()));
+        }
+
+        if (cards.Count == 0)
+            cards.Add(UiKit.Section("还没有收纳盒", UiKit.Row("💡", "先新建一个试试", "推荐用「桌面分区」，桌面会干净很多", null)));
+        foreach (var card in cards) col.Children.Add(card);
+        return col;
+    }
+
+    private static string KindText(BoxKind kind) => kind switch
+    {
+        BoxKind.Mapped => "映射盒：只存路径，不动文件",
+        BoxKind.Drawer => "抽屉盒",
+        BoxKind.Todo => "待办盒",
+        _ => "普通盒：文件会被移动进存储目录"
+    };
+
+    public static void NewBoxDialog(MainWindow host, bool folderMode)
+    {
+        var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var nameInput = UiKit.Input(folderMode ? "桌面整理" : "新收纳盒", _ => { }, 220);
+        var shortcutsOn = false;
+        var includeShortcuts = UiKit.Toggle(false, v => shortcutsOn = v);
+        var previewText = UiKit.Text("", 11.5, secondary: true);
+
+        var win = new Window
+        {
+            Title = folderMode ? "新建（文件夹归集）" : "新建（桌面分区）",
+            Width = 520,
+            Height = 380,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Background = Theme.Current.BackgroundBrush,
+            Foreground = Theme.Current.ForegroundBrush
+        };
+
+        var createBtn = UiKit.Btn("开始整理", () => { }, true);
+        var cancelBtn = UiKit.Btn("取消", () => win.Close());
+        var previewBtn = UiKit.Btn("先预览（不执行）", () =>
+        {
+            var plan = BuildPlan(desktopPath, shortcutsOn, folderMode);
+            var lines = string.Join("\n", plan.Items.Take(20).Select(i => Path.GetFileName(i.SourcePath) + "  →  " + i.Category));
+            previewText.Text = $"将整理 {plan.Items.Count} 项，保留 {plan.Skipped.Count} 项：";
+            MessageBox.Show($"将整理 {plan.Items.Count} 项，保留 {plan.Skipped.Count} 项\n\n{lines}", "预览结果",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        });
+
+        createBtn.Click += (_, _) =>
+        {
+            try
+            {
+                var name = string.IsNullOrWhiteSpace(nameInput.Text) ? "新收纳盒" : nameInput.Text.Trim();
+                if (folderMode)
+                {
+                    var plan = BuildPlan(desktopPath, shortcutsOn, true);
+                    var run = AppServices.Organizer.Execute(plan, "manual-folder");
+                    Ui.Notifications.Toast($"已在桌面按类型建好文件夹并整理 {run.MovedCount} 项", 8,
+                        action: () => AppServices.Organizer.Undo(run));
+                }
+                else
+                {
+                    var box = new BoxRecord
+                    {
+                        Name = name,
+                        Kind = BoxKind.Normal,
+                        MarginX = 240 + AppServices.Repo.Boxes().Count * 30,
+                        MarginY = 160 + AppServices.Repo.Boxes().Count * 20
+                    };
+                    box.StorageRoot = Path.Combine(AppPaths.DefaultManagedRoot, BoxWindow.SanitizeName(box.Name));
+                    AppServices.Repo.Upsert(box);
+                    (Application.Current as App)?.Desktop.ShowBox(box);
+
+                    var plan = BuildPlan(desktopPath, shortcutsOn, false);
+                    if (plan.Items.Count > 0)
+                    {
+                        var run = AppServices.Organizer.Execute(plan, "manual-partition");
+                        Ui.Notifications.Toast($"已把 {run.MovedCount} 个文件分好类", 8,
+                            action: () => AppServices.Organizer.Undo(run));
+                    }
+                }
+                win.Close();
+                (Application.Current as App)?.Desktop.ReloadBoxes();
+                host.RefreshCurrent();
+            }
+            catch (Exception ex)
+            {
+                Ui.Notifications.Toast("整理失败：" + ex.Message);
+            }
+        };
+
+        var body = new List<UIElement>
+        {
+            UiKit.PageHeader(folderMode ? "文件夹归集" : "桌面分区",
+                folderMode ? "在桌面按类型建文件夹，把文件真的收进去。" : "文件收进桌面上的盒子，桌面不留文件夹（推荐）。"),
+            UiKit.Section("设置",
+                UiKit.Row("🏷", "名称", folderMode ? "（文件夹按类型自动命名）" : "给盒子起个名字", nameInput),
+                UiKit.Row("🔗", "也收纳快捷方式", "默认不收：常用图标留在桌面更好找", includeShortcuts),
+                UiKit.Row("👀", "预览", "先看看会动哪些文件，再决定", previewBtn),
+                UiKit.Row("📋", "结果", null, previewText)),
+            UiKit.Row("", "", null, UiKit.Row(createBtn, cancelBtn))
+        };
+        var stack = UiKit.Col(body.ToArray());
+        win.Content = UiKit.Scroll(stack);
+        win.ShowDialog();
+    }
+
+    private static OrganizeEngine.Plan BuildPlan(string desktopPath, bool includeShortcuts, bool folderMode)
+        => AppServices.Organizer.BuildPlan(new OrganizeEngine.ScanOptions(desktopPath, includeShortcuts, false, folderMode));
+}
+
+public static class OrganizePage
+{
+    public static UIElement Build(MainWindow host)
+    {
+        var col = UiKit.Col();
+        var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        col.Children.Add(UiKit.PageHeader("整理与规则", "整理前先预览，整理后随时回滚；快捷方式默认不动。"));
+
+        col.Children.Add(UiKit.Section("一键整理",
+            UiKit.ActionRow("🧹", "打开整理向导", "扫描桌面 → 预览 → 执行 → 不满意就撤销", "开始",
+                () => ShowWizard(host), true),
+            UiKit.Row("📂", "整理范围", desktopPath, null),
+            UiKit.ActionRow("🔎", "只统计不整理", "先看看会动哪些文件", "试算", () =>
+            {
+                var plan = BuildPlan();
+                MessageBox.Show($"将整理 {plan.Items.Count} 项，保留 {plan.Skipped.Count} 项。", "预览",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            })));
+
+        col.Children.Add(UiKit.Section("方式与自动化",
+            UiKit.ToggleRow("🤖", "自动整理", "默认关闭；开启后按间隔检查桌面（连续取消会提醒）",
+                AppServices.Settings.Get("organize.auto", false), v => AppServices.Settings.Set("organize.auto", v)),
+            UiKit.InputRow("⏱", "检查间隔（分钟）", null, AppServices.Settings.Get("organize.autoMinutes", 30).ToString(), v =>
+            {
+                if (int.TryParse(v, out var m)) AppServices.Settings.Set("organize.autoMinutes", Math.Clamp(m, 5, 1440));
+            }, 80),
+            UiKit.ToggleRow("🔗", "也收纳快捷方式", "默认不收：快捷方式留在桌面",
+                AppServices.Settings.Get("organize.includeShortcuts", false), v => AppServices.Settings.Set("organize.includeShortcuts", v)),
+            UiKit.ToggleRow("📁", "用文件夹归集而不是桌面分区", "开启＝按类型建文件夹；关闭＝收进桌面盒子",
+                AppServices.Settings.Get("organize.folderMode", false), v => AppServices.Settings.Set("organize.folderMode", v))));
+
+        var ruleRows = new List<UIElement>();
+        var rules = AppServices.Repo.Rules();
+        if (rules.Count == 0)
+            ruleRows.Add(UiKit.Row("📜", "还没有规则", "规则会先于默认分类生效，可把特定文件固定送到某个盒子", null));
+        foreach (var rule in rules)
+        {
+            var captured = rule;
+            var conditions = RulesEngine.ParseConditions(captured.ConditionsJson);
+            ruleRows.Add(UiKit.Row("📜", captured.Name,
+                $"类型 {string.Join("/", conditions.Extensions)}　名称含 {string.Join("/", conditions.NameContains)}　命中 {captured.HitCount} 次",
+                UiKit.Row(
+                    UiKit.Toggle(captured.Enabled, v =>
+                    {
+                        captured.Enabled = v;
+                        AppServices.Repo.Upsert(captured);
+                    }),
+                    UiKit.Btn("删除", () =>
+                    {
+                        AppServices.Repo.DeleteRule(captured.Id);
+                        host.RefreshCurrent();
+                    }))));
+        }
+        ruleRows.Add(UiKit.Row("＋", "快速新建规则", "把名称里含关键词的文件固定送到指定盒",
+            UiKit.Row(
+                UiKit.Btn("截图 → 图片盒", () => QuickAddRule("截图", "截图", host)),
+                UiKit.Btn("安装包 → 程序盒", () => QuickAddRule("安装包", "安装包", host)))));
+        col.Children.Add(UiKit.Section("规则", ruleRows.ToArray()));
+
+        var historyRows = new List<UIElement>();
+        var runs = AppServices.Repo.Runs(20);
+        if (runs.Count == 0)
+            historyRows.Add(UiKit.Row("🕘", "还没有整理记录", null, null));
+        foreach (var run in runs)
+        {
+            var captured = run;
+            UIElement? control = captured.Undone || captured.MovedCount == 0
+                ? null
+                : UiKit.Btn("回滚这一条", () =>
+                {
+                    var (restored, failed) = AppServices.Organizer.Undo(captured);
+                    Ui.Notifications.Toast($"回滚完成：还原 {restored}，失败 {failed}");
+                    host.RefreshCurrent();
+                });
+            historyRows.Add(UiKit.Row("🕘",
+                captured.StartedAt.LocalDateTime.ToString("MM-dd HH:mm:ss"),
+                $"{captured.MovedCount} 项 · {(captured.Undone ? "已回滚" : "可回滚")}", control));
+        }
+        col.Children.Add(UiKit.Section("整理历史", historyRows.ToArray()));
+        return col;
+    }
+
+    private static OrganizeEngine.Plan BuildPlan() => AppServices.Organizer.BuildPlan(new OrganizeEngine.ScanOptions(
+        Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+        AppServices.Settings.Get("organize.includeShortcuts", false),
+        false,
+        AppServices.Settings.Get("organize.folderMode", false)));
+
+    private static void QuickAddRule(string name, string keyword, MainWindow host)
+    {
+        AppServices.Repo.Upsert(new RuleRecord
+        {
+            Name = name,
+            ConditionsJson = RulesEngine.ToJson(new RuleConditions { NameContains = new List<string> { keyword } }),
+            ActionsJson = RulesEngine.ToJson(new RuleActions { Kind = "MoveToBox" })
+        });
+        Ui.Notifications.Toast($"已新建规则「{name}」", 3);
+        host.RefreshCurrent();
+    }
+
+    public static void ShowWizard(MainWindow host)
+    {
+        var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var useFolder = AppServices.Settings.Get("organize.folderMode", false);
+        var includeShortcuts = AppServices.Settings.Get("organize.includeShortcuts", false);
+        var plan = AppServices.Organizer.BuildPlan(new OrganizeEngine.ScanOptions(desktopPath, includeShortcuts, false, useFolder));
+
+        var list = UiKit.Col();
+        list.Children.Add(UiKit.Text($"将整理 {plan.Items.Count} 项，保留 {plan.Skipped.Count} 项", 13.5, bold: true));
+        foreach (var group in plan.Items.GroupBy(i => i.Category))
+            list.Children.Add(UiKit.Text($"· {group.Key}：{group.Count()} 项", 12.5));
+        foreach (var skip in plan.Skipped.Take(8))
+            list.Children.Add(UiKit.Text("· 保留：" + skip, 11.5, secondary: true));
+
+        var preview = new Window
+        {
+            Title = "整理预览",
+            Width = 560,
+            Height = 500,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Background = Theme.Current.BackgroundBrush,
+            Foreground = Theme.Current.ForegroundBrush
+        };
+        var runBtn = UiKit.Btn("开始整理", () => { }, true);
+        var cancelBtn = UiKit.Btn("取消", () => preview.Close());
+        runBtn.Click += (_, _) =>
+        {
+            preview.Close();
+            var run = AppServices.Organizer.Execute(plan, useFolder ? "manual-folder" : "manual-partition");
+            Ui.Notifications.Toast($"整理完成：{run.MovedCount} 项", 10, action: () =>
+            {
+                var (restored, failed) = AppServices.Organizer.Undo(run);
+                Ui.Notifications.Toast($"已回滚：{restored} 项" + (failed > 0 ? $"，{failed} 项失败" : ""));
+            });
+            (Application.Current as App)?.Desktop.ReloadBoxes();
+            host.RefreshCurrent();
+        };
+        preview.Content = UiKit.Col(
+            UiKit.PageHeader("整理预览", "确认无误再执行；执行后底部会出现撤销入口。"),
+            UiKit.Scroll(list),
+            UiKit.Row(runBtn, cancelBtn));
+        preview.ShowDialog();
+    }
+}

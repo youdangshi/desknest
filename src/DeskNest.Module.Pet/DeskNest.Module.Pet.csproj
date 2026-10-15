@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>DeskNest.Module.Pet</RootNamespace>
+    <AssemblyName>DeskNest.Module.Pet</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DeskNest.Core\DeskNest.Core.csproj" />
+  </ItemGroup>
+</Project>

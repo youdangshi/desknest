@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>DeskNest.App</RootNamespace>
+    <AssemblyName>DeskNest</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <StartupObject>DeskNest.App.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DeskNest.Core\DeskNest.Core.csproj" />
+    <ProjectReference Include="..\DeskNest.Native\DeskNest.Native.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Assets\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <!-- 托盘用到了 WinForms，但它的隐式 using 会和 WPF 的类型冲突（Button/Brush/Color 等），这里移除 -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+  <!-- 把可选模块编译出的 dll 拷到输出目录的 modules\ 下：没放进去的模块就等于"未安装" -->
+  <!-- 让模块先被构建（只构建、不引用其程序集），否则发布时模块 dll 可能还不存在 -->
+  <ItemGroup>
+    <ProjectReference Include="..\DeskNest.Module.Pet\DeskNest.Module.Pet.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\DeskNest.Module.UsageStats\DeskNest.Module.UsageStats.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\DeskNest.Module.PerfMonitor\DeskNest.Module.PerfMonitor.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\DeskNest.Module.ApiPanel\DeskNest.Module.ApiPanel.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\DeskNest.Module.PowerSchedule\DeskNest.Module.PowerSchedule.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\DeskNest.Module.AiBridge\DeskNest.Module.AiBridge.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\DeskNest.Module.ComfyUI\DeskNest.Module.ComfyUI.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <!-- 把可选模块 dll 拷到输出 / 发布目录的 modules\ 下：没放进去的模块就等于"未安装" -->
+  <Target Name="CopyModules" AfterTargets="Build">
+    <ItemGroup>
+      <ModuleDllsRid Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\$(RuntimeIdentifier)\DeskNest.Module.*.dll" />
+      <ModuleDllsPlain Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\DeskNest.Module.*.dll" />
+      <ModuleDlls Include="@(ModuleDllsRid)" Condition="'@(ModuleDllsRid)' != ''" />
+      <ModuleDlls Include="@(ModuleDllsPlain)" Condition="'@(ModuleDllsRid)' == ''" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ModuleDlls)" DestinationFolder="$(OutDir)modules" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyModulesToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <ModuleDllsRidPub Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\$(RuntimeIdentifier)\DeskNest.Module.*.dll" />
+      <ModuleDllsPlainPub Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\DeskNest.Module.*.dll" />
+      <ModuleDllsPub Include="@(ModuleDllsRidPub)" Condition="'@(ModuleDllsRidPub)' != ''" />
+      <ModuleDllsPub Include="@(ModuleDllsPlainPub)" Condition="'@(ModuleDllsRidPub)' == ''" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ModuleDllsPub)" DestinationFolder="$(PublishDir)modules" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="已复制 @(ModuleDllsPub->Count()) 个可选模块到 $(PublishDir)modules" />
+  </Target>
+</Project>
