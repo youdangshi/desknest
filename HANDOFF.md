@@ -5,11 +5,19 @@
 
 ## 一句话现状
 
-**v1.1.0**：界面骨架已换成 WPF-UI 的真 `NavigationView`（汉堡折叠、分组、页脚），新增「多显示器」页与
-分级级联右键菜单，修掉 6 个真实缺陷，测试 **64 项全绿**；完整方案书见 `docs/09-桌巢-完整软件方案书-v2.0.md`
-（含 20 张由 `--shot-pages` 自动生成的真实界面截图）。
+**v1.1.1**：界面骨架是 WPF-UI 的真 `NavigationView`，有「多显示器」页与分级级联右键菜单；
+界面文案已全中文；「关于」页有检查更新（已发 GitHub Release `v1.1.1`，带 71MB zip 附件）；
+测试 **85 项全绿**。文档：`docs/10-桌巢-完整软件策划书.md`（从头读到尾那份）+
+`docs/09-桌巢-完整软件方案书-v2.0.md`（20 张自动生成的真实截图）。
 
 ## 最近改动
+
+0. **v1.1.1（本轮）**：① 界面文案全中文（配色/材质/视图/触发方式/动作/桌宠层级这些下拉原来直接显示
+   `FollowSystem`、`Acrylic` 这类英文枚举值，现在显示中文，设置文件里仍存原值）；
+   ② 「关于」页新增检查更新（GitHub Releases，含"启动时自动检查"开关，默认关）；
+   ③ 修「删除收纳盒删不掉」：删除逻辑抽成 `BoxService.Delete`（先还原文件 → 删记录 → **回读确认** → 每步写日志），
+   确认框挂到主窗口，关盒子窗口前先 `DesktopLayer.Detach`（跨进程父子窗口直接销毁会留幽灵窗口）；
+   ④ `Db.InTransaction`：索引落盘整段持锁，避免索引事务回滚时连带吞掉别的写入（删盒子/改设置）。
 
 1. **真 NavigationView 外壳**：`MainWindow` 用 WPF-UI `NavigationView`（`PaneHeader` 放品牌头、`IsPaneToggleVisible`、
    `OpenPaneLength=232`、`CompactPaneLength=48`）。注意 4.3.0 的 `NavigationView` **没有 `Content` 属性**，
