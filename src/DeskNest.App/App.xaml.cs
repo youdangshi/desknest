@@ -21,7 +21,8 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        AppServices.Initialize();
+        // 截图模式不启动全盘索引：它会在几十秒后随进程一起被关掉，留下一份残缺索引
+        AppServices.Initialize(startIndexing: PageShotter.OutputDir is null);
 
         _tray = new Tray(
             toggleLayer: ToggleLayer,
@@ -48,6 +49,12 @@ public partial class App : Application
         Commands.ShowMainWindowRequested = () => ShowMain();
 
         _desktop.RestoreAll();
+        // 拔掉副屏 / 改过分辨率之后，盒子可能停在所有显示器之外（用户视角就是"盒子不见了"）
+        if (AppServices.Settings.Get("displays.rescueOffscreen", true))
+        {
+            var rescued = _desktop.RescueOffscreen();
+            if (rescued > 0) Ui.Notifications.Toast($"检测到 {rescued} 个窗口跑到屏幕外，已拉回主屏（可在「多显示器」页关闭）", 8);
+        }
         if (AppServices.Repo.Pet().IsVisible && AppServices.Modules.IsEnabled(ModuleIds.Pet))
             _desktop.ShowPet();
 
@@ -59,6 +66,22 @@ public partial class App : Application
         // 之前写死了"引导完成后永不显示"，与设置里的「静默启动」开关自相矛盾（用户会以为程序没启动）。
         var onboardingDone = AppServices.Settings.Get("onboarding.done", false);
         var silentStart = AppServices.Settings.Get("app.silentStart", false);
+        // 截图模式：一定显示主窗口，跑完自动退出
+        if (PageShotter.OutputDir is not null)
+        {
+            ShowMain();
+            Dispatcher.InvokeAsync(async () =>
+            {
+                var run = PageShotter.RunAsync(this);
+                // 超时兜底：截图模式绝不该把进程挂住（曾因为模态窗口卡死过一次）
+                if (await Task.WhenAny(run, Task.Delay(TimeSpan.FromMinutes(4))) != run)
+                {
+                    Core.Log.Error("截图模式超时，强制退出");
+                    Shutdown();
+                }
+            }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            return;
+        }
         if (!onboardingDone || !silentStart) ShowMain();
         else Ui.Notifications.Toast("桌巢已在后台运行：Alt+Space 搜索，Alt+` 显示/隐藏桌面");
     }
@@ -121,6 +144,9 @@ public partial class App : Application
         _searchPanel.ShowPanel();
     }
 
+    /// <summary>隐藏快捷搜索面板（截图模式收尾用；用户按 Esc 走的是面板自己的逻辑）。</summary>
+    public void HideSearch() => _searchPanel?.HidePanel();
+
     public void ShowMain(string? page = null)
     {
         try
@@ -148,6 +174,9 @@ public partial class App : Application
     }
 
     public DesktopWindows Desktop => _desktop;
+
+    /// <summary>主窗口（截图模式与测试要用到；未创建时返回 null）。命名避开 WPF 生成的 <c>App.Main</c>。</summary>
+    public MainWindow? MainView => _mainWindow;
 
     protected override void OnExit(ExitEventArgs e)
     {

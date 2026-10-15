@@ -36,6 +36,11 @@ public sealed class BoxRecord
     public bool HideFileName { get; set; }
     public bool ShowExtensions { get; set; }
     public bool ShowHoverButtons { get; set; } = true;
+    /// <summary>
+    /// 标题栏样式：Standard（标准）/ Compact（紧凑）/ Floating（悬浮，鼠标移上去才显形）/
+    /// Hidden（隐藏，靠 Alt+拖动或快捷键操作）。
+    /// </summary>
+    public string TitleStyle { get; set; } = "Standard";
     public string MonitorKey { get; set; } = "";
     public string Anchor { get; set; } = "Free";
     public double MarginX { get; set; } = 200;

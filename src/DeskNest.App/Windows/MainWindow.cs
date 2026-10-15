@@ -20,7 +20,7 @@ namespace DeskNest.App.Windows;
 /// </summary>
 public sealed class MainWindow : FluentWindow
 {
-    private readonly StackPanel _nav;
+    private readonly NavigationView _nav;
     private readonly Border _contentHost;
     private readonly Dictionary<string, (string Title, string Glyph, Func<MainWindow, UIElement> Build)> _pages = new();
     private string _current = "overview";
@@ -33,6 +33,9 @@ public sealed class MainWindow : FluentWindow
 
     /// <summary>导航里显示的标题（自动化测试用：必须无重复）。</summary>
     public IReadOnlyList<string> PageTitles => _pages.Values.Select(v => v.Title).ToList();
+
+    /// <summary>取某个页面的显示标题（截图命名、调试日志用）。</summary>
+    public string? TitleOf(string key) => _pages.TryGetValue(key, out var page) ? page.Title : null;
 
     public MainWindow()
     {
@@ -54,33 +57,49 @@ public sealed class MainWindow : FluentWindow
 
         RegisterPages();
 
-        _nav = new StackPanel { Margin = new Thickness(8, 4, 8, 12) };
         _contentHost = new Border { Padding = new Thickness(28, 10, 28, 20) };
 
-        var root = new Grid();
-        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(232) });
-        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        var navRoot = new DockPanel { Background = Theme.Current.CardBrush };
-        var logo = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(18, 18, 16, 14) };
-        logo.Children.Add(new TextBlock
-        {
-            Text = "▦",
-            FontSize = 18,
-            Foreground = Theme.Current.AccentBrush,
-            Margin = new Thickness(0, 0, 8, 0)
-        });
-        logo.Children.Add(new TextBlock { Text = "桌巢", FontSize = 14, Foreground = Theme.Current.ForegroundBrush });
-        DockPanel.SetDock(logo, Dock.Top);
-        navRoot.Children.Add(logo);
-        navRoot.Children.Add(new ScrollViewer { Content = _nav, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-
-        var divider = new Border { Width = 1, Background = Theme.Current.BorderBrush };
         var right = new DockPanel();
         var topBar = BuildTopBar();
         DockPanel.SetDock(topBar, Dock.Top);
         right.Children.Add(topBar);
         right.Children.Add(_contentHost);
+
+        // WPF-UI 的真 NavigationView：自带汉堡按钮、折叠成图标栏、分组标题与页脚
+        _nav = new NavigationView
+        {
+            // PaneTitle 留空：品牌信息已经由下面的 PaneHeader 承担，两处都写会重复一行"桌巢"
+            PaneTitle = "",
+            PaneHeader = BuildPaneHeader(),
+            PaneDisplayMode = NavigationViewPaneDisplayMode.Left,
+            IsPaneToggleVisible = true,
+            OpenPaneLength = 232,
+            CompactPaneLength = 48,
+            IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
+            AlwaysShowHeader = false,
+            IsTopSeparatorVisible = false,
+            IsFooterSeparatorVisible = true,
+            Header = null,
+            FrameMargin = new Thickness(0)
+        };
+
+        // NavigationView 是个纯导航外壳（基类 Control，没有 Content）。它内部用
+        // NavigationViewContentPresenter（一个 Frame）承载右侧内容，但该成员是私有的，
+        // 所以等模板套用后再从可视化树里取出来挂上我们自己的页面宿主。
+        _nav.Loaded += (_, _) =>
+        {
+            var presenter = FindChild<Wpf.Ui.Controls.NavigationViewContentPresenter>(_nav);
+            if (presenter is null)
+            {
+                Log.Error("找不到 NavigationViewContentPresenter，右侧内容无法挂载");
+                return;
+            }
+            presenter.Background = Brushes.Transparent;   // 让 Mica/亚克力透上来
+            presenter.BorderThickness = new Thickness(0);
+            presenter.Padding = new Thickness(0);
+            presenter.NavigationUIVisibility = System.Windows.Navigation.NavigationUIVisibility.Hidden;
+            presenter.Content = right;
+        };
 
         // FluentWindow 开了 ExtendsContentIntoTitleBar 之后，标题栏由我们自己放进布局里
         var titleBar = new Wpf.Ui.Controls.TitleBar
@@ -94,14 +113,7 @@ public sealed class MainWindow : FluentWindow
         var shell = new DockPanel();
         DockPanel.SetDock(titleBar, Dock.Top);
         shell.Children.Add(titleBar);
-        shell.Children.Add(root);
-
-        Grid.SetColumn(navRoot, 0);
-        Grid.SetColumn(divider, 0);
-        Grid.SetColumn(right, 1);
-        root.Children.Add(navRoot);
-        root.Children.Add(divider);
-        root.Children.Add(right);
+        shell.Children.Add(_nav);
         Content = shell;
 
         BuildNav();
@@ -128,6 +140,40 @@ public sealed class MainWindow : FluentWindow
             }
             catch { }
         };
+    }
+
+    /// <summary>在可视化树里找第一个指定类型的子孙元素。</summary>
+    private static T? FindChild<T>(DependencyObject root) where T : DependencyObject
+    {
+        if (root is T hit) return hit;
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            if (FindChild<T>(VisualTreeHelper.GetChild(root, i)) is { } found) return found;
+        }
+        return null;
+    }
+
+    /// <summary>导航栏顶部的品牌头（图标 + 名字），折叠时自动隐藏以免只剩半行字。</summary>
+    private static UIElement BuildPaneHeader()
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 4, 0, 6) };
+        row.Children.Add(new System.Windows.Controls.Image
+        {
+            Source = AppIcon.WindowIcon,
+            Width = 20,
+            Height = 20,
+            Margin = new Thickness(0, 0, 10, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        row.Children.Add(new TextBlock
+        {
+            Text = "桌巢 DeskNest",
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        return row;
     }
 
     private UIElement BuildTopBar()
@@ -157,7 +203,7 @@ public sealed class MainWindow : FluentWindow
 
         var quick = new StackPanel { Orientation = Orientation.Horizontal };
         quick.Children.Add(UiKit.Btn("快捷搜索", () => (Application.Current as App)?.ShowSearch(), true));
-        quick.Children.Add(UiKit.Btn("一键整理", OpenOrganizeWizard));
+        quick.Children.Add(UiKit.Btn("一键整理", () => OpenOrganizeWizard()));
         Grid.SetColumn(quick, 1);
 
         grid.Children.Add(searchWrap);
@@ -226,6 +272,7 @@ public sealed class MainWindow : FluentWindow
         AddPage("organize", "整理与规则", Icons.Organize, OrganizePage.Build);
         AddPage("widgets", "桌面组件", Icons.Widgets, WidgetsPage.Build);
         AddPage("appearance", "外观与主题", Icons.Appearance, AppearancePage.Build);
+        AddPage("displays", "多显示器", Icons.Monitor, DisplaysPage.Build);
         AddPage("modules", "模块", Icons.Modules, ModulesPage.Build);
         AddPage("data", "数据与备份", Icons.Data, DataPage.Build);
         AddPage("about", "关于", Icons.About, AboutPage.Build);
@@ -246,8 +293,8 @@ public sealed class MainWindow : FluentWindow
 
     private void BuildNav()
     {
-        _nav.Children.Clear();
-        string? lastGroup = null;
+        _nav.MenuItems.Clear();
+        _nav.FooterMenuItems.Clear();
         var groups = new Dictionary<string, string>
         {
             ["overview"] = "通用",
@@ -255,6 +302,7 @@ public sealed class MainWindow : FluentWindow
             ["organize"] = "通用",
             ["widgets"] = "通用",
             ["appearance"] = "外观",
+            ["displays"] = "外观",
             ["modules"] = "功能",
             ["pet"] = "功能",
             ["perf"] = "功能",
@@ -271,12 +319,17 @@ public sealed class MainWindow : FluentWindow
             var members = _pages.Where(p => (groups.TryGetValue(p.Key, out var g) ? g : "功能") == group).ToList();
             if (members.Count == 0) continue;
 
-            _nav.Children.Add(UiKit.NavGroup(group, lastGroup is null ? 4 : 16));
-            lastGroup = group;
+            var target = _nav.MenuItems;
+            // 维护组放到页脚：日常几乎不点，不该占主列表的位置
+            if (group == "维护") target = _nav.FooterMenuItems;
+            else target.Add(UiKit.NavGroup(group, 12));
+
             foreach (var (key, value) in members)
             {
-                var target = key;
-                _nav.Children.Add(UiKit.NavButton(value.Glyph, value.Title, key == _current, () => NavigateTo(target)));
+                var pageKey = key;
+                var item = UiKit.NavButton(value.Glyph, value.Title, key == _current, () => NavigateTo(pageKey));
+                item.ToolTip = value.Title;   // 折叠成图标栏时靠提示认出是哪个页面
+                target.Add(item);
             }
         }
     }
@@ -309,13 +362,27 @@ public sealed class MainWindow : FluentWindow
                 UiKit.Text("这个页面加载失败：" + ex.Message, 13),
                 UiKit.Btn("重试", () => NavigateTo(page)));
         }
-        BuildNav();
+        // 只同步选中态，不整表重建：重建会让导航丢掉滚动位置、也会闪一下
+        SyncNavSelection();
     }
 
-    public void OpenOrganizeWizard()
+    /// <summary>把导航项的高亮切到当前页（折叠状态下也一致）。</summary>
+    private void SyncNavSelection()
+    {
+        var allItems = _nav.MenuItems.Cast<object>().Concat(_nav.FooterMenuItems.Cast<object>());
+        foreach (var item in allItems.OfType<NavigationViewItem>())
+        {
+            var isCurrent = item.Content is string label
+                && _pages.TryGetValue(_current, out var page)
+                && label == page.Title;
+            if (item.IsActive != isCurrent) item.IsActive = isCurrent;
+        }
+    }
+
+    public void OpenOrganizeWizard(bool modal = true)
     {
         NavigateTo("organize");
-        OrganizePage.ShowWizard(this);
+        OrganizePage.ShowWizard(this, modal);
     }
 
     public void RefreshCurrent() => NavigateTo(_current);

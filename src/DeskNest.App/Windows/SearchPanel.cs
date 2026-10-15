@@ -27,6 +27,12 @@ public sealed class SearchPanel
         RefreshResults();
     }
 
+    /// <summary>隐藏面板（截图模式收尾用）。下次 ShowPanel 仍会重新定位到屏幕中央。</summary>
+    public void HidePanel()
+    {
+        _window?.Hide();
+    }
+
     private void EnsureWindow()
     {
         if (_window is not null) return;

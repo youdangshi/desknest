@@ -186,9 +186,99 @@ public static class Icons
             : Wpf.Ui.Controls.SymbolRegular.Settings24;
     }
 
-    /// <summary>语义键 → SymbolRegular 名字（含 24 尺寸后缀）。</summary>
-    public static string SymbolName(string glyphOrEmoji) => (glyphOrEmoji ?? "").Trim() switch
+    /// <summary>
+    /// 本文件顶部的 <c>Icons.*</c> 常量是 MDL2 码位（\uE7xx 段），而 <c>SymbolRegular</c> 用的是
+    /// Fluent 图标字体的另一段码位（\uF0xx 段），两者数字不同名也不同。导航与我们自己的卡片都直接传
+    /// <c>Icons.*</c> 常量，所以必须在这里做一次"码位 → 名字"的翻译；
+    /// 少了这一步，所有图标都会落进默认值，看起来就是"每个菜单都是一个齿轮"（v1.0.1 的真实缺陷）。
+    /// </summary>
+    private static string NameOfCodepoint(string codePoint) => codePoint switch
     {
+        "\uE80F" => "Home24",              // Home
+        "\uE8B7" => "Folder24",            // Folder
+        "\uE838" => "FolderOpen24",        // FolderOpen
+        "\uE74C" => "Broom24",             // Organize
+        "\uE71D" => "AppsList24",          // Widgets / Modules
+        "\uE790" => "PaintBrush24",        // Appearance / Color
+        "\uE8F1" => "Save24",              // Data
+        "\uE74E" => "Save24",              // Save
+        "\uE792" => "Save24",              // Save2
+        "\uE946" => "Info24",              // About
+        "\uE8D4" => "Emoji24",             // Pet
+        "\uE8B9" => "Image24",             // Image
+        "\uE9D9" => "Gauge24",             // Performance / Speed
+        "\uE823" => "Clock24",             // Usage / Clock
+        "\uE8C7" => "Money24",             // Api / Money
+        "\uE7E8" => "Power24",             // Power
+        "\uE945" => "Lightbulb24",         // Ai
+        "\uE713" => "Settings24",          // Settings
+        "\uE710" => "Add24",               // Add
+        "\uE74D" => "Delete24",            // Delete
+        "\uE70F" => "Edit24",              // Edit
+        "\uE72C" => "ArrowSync24",         // Refresh
+        "\uE721" => "Search24",            // Search
+        "\uE8E5" => "Open24",              // Open
+        "\uE7A7" => "ArrowUndo24",         // Undo
+        "\uE7B3" => "Eye24",               // Eye
+        "\uED1A" => "EyeOff24",            // EyeHide
+        "\uE735" => "Star24",              // Star
+        "\uE8EC" => "Tag24",               // Tag
+        "\uE71B" => "Link24",              // Link
+        "\uE774" => "Globe24",             // Globe
+        "\uE765" => "Keyboard24",          // Keyboard
+        "\uE787" => "CalendarLtr24",       // Calendar
+        "\uE896" => "ArrowDownload24",     // Download
+        "\uE898" => "ArrowUpload24",       // Upload
+        "\uE753" => "Cloud24",             // Cloud
+        "\uE9D2" => "DataBarVertical24",   // Chart
+        "\uE80A" => "Grid24",              // Grid
+        "\uE8FD" => "List24",              // List
+        "\uE72E" => "LockClosed24",        // Lock
+        "\uE785" => "LockOpen24",          // Unlock
+        "\uE718" => "Pin24",               // Pin
+        "\uE768" => "Play24",              // Play
+        "\uE722" => "Camera24",            // Camera
+        "\uE720" => "Mic24",               // Microphone
+        "\uEBE8" => "Bug24",               // Bug
+        "\uEB51" => "Heart24",             // Heart
+        "\uE708" => "WeatherMoon24",       // Moon
+        "\uE706" => "WeatherSunny24",      // Sun
+        "\uE71E" => "ZoomIn24",            // Zoom
+        "\uE71C" => "Filter24",            // Filter
+        "\uE8CB" => "ArrowSort24",         // Sort
+        "\uE8C8" => "Copy24",              // Copy
+        "\uE77F" => "ClipboardPaste24",    // Paste
+        "\uE8C6" => "Cut24",               // Cut
+        "\uE8DA" => "EyeTracking24",       // Reveal
+        "\uE73E" => "Checkmark24",         // Check
+        "\uE711" => "Dismiss24",           // Close
+        "\uE712" => "MoreHorizontal24",    // More
+        "\uE70E" => "ArrowUp24",           // Up / Collapse
+        "\uE70D" => "ArrowDown24",         // Down / Expand
+        "\uE76C" => "ArrowRight24",        // Right
+        "\uE72B" => "ArrowLeft24",         // Left
+        "\uE7C4" => "ArrowMaximize24",     // Resize
+        "\uE75C" => "Eraser24",            // Erase
+        "\uE7B5" => "Rocket24",            // Rocket
+        "\uE70B" => "Note24",              // Note
+        "\uE9D5" => "TaskListSquareLtr24", // Task
+        "\uE9BD" => "Cloud24",             // Weather
+        "\uEC4F" => "MusicNote224",        // Music
+        "\uE7F4" => "Desktop24",           // Monitor
+        _ => ""
+    };
+
+    /// <summary>语义键 → SymbolRegular 名字（含 24 尺寸后缀）。</summary>
+    public static string SymbolName(string glyphOrEmoji)
+    {
+        var key = (glyphOrEmoji ?? "").Trim();
+        // 单字符且落在图标字体的私有区 → 先按"码位"翻译（导航传的就是这种）
+        if (key.Length == 1 && key[0] >= '\uE000' && key[0] <= '\uF8FF'
+            && NameOfCodepoint(key) is { Length: > 0 } byCode)
+            return byCode;
+
+        return key switch
+        {
         "🏠" or "home" => "Home24",
         "⭐" or "star" => "Star24",
         "🗂" or "📁" or "folder" => "Folder24",
@@ -242,7 +332,8 @@ public static class Icons
         "✍" or "edit" => "Rename24",
         "🎞️" => "Play24",
         _ => "Settings24"
-    };
+        };
+    }
 
     /// <summary>图标文本（单色，随前景色）。用于少量没有矢量资源的场合。</summary>
     public static TextBlock Glyph(string code, double size = Tokens.IconSize, Brush? foreground = null)

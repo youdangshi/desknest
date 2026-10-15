@@ -28,7 +28,11 @@ public static class AppServices
     public static event Action? RestartNeeded;
 
     /// <summary>初始化服务。startBackgroundWork=false 时只建对象、不启动索引/采样（供自动化测试用）。</summary>
-    public static void Initialize(bool startBackgroundWork = true)
+    /// <param name="startBackgroundWork">是否启动后台任务（模块扫描、索引、采样等）。</param>
+    /// <param name="startIndexing">
+    /// 是否开始全盘索引。截图模式会关掉它：索引跑到一半就被关掉，会把一份残缺的索引写进库。
+    /// </param>
+    public static void Initialize(bool startBackgroundWork = true, bool startIndexing = true)
     {
         AppPaths.EnsureCreated();
         Log.Info("========== 桌巢启动 ==========");
@@ -62,7 +66,7 @@ public static class AppServices
         // 后台任务
         if (startBackgroundWork)
         {
-            if (Settings.Get("search.enabled", true)) Search.StartIndexing(SearchRoots());
+            if (startIndexing && Settings.Get("search.enabled", true)) Search.StartIndexing(SearchRoots());
             if (Settings.Get("usage.track", true)) Usage.Start();
             if (Settings.Get("modules.PerfMonitor", false)) Perf.Start();
             if (Settings.Get("ai.enabled", false)) AiBridge.Start();
@@ -135,8 +139,17 @@ public static class AppServices
             Keyboard.Dispose();
             Modules.Shutdown();
             if (Settings.Get("backup.onExit", false)) Backup.Create("exit");
-            Log.Info("桌巢已退出");
-            Db.Dispose();
+            // 索引线程还在写盘时释放连接会抛 "Cannot access a disposed object"；
+            // 那种情况就让它自己写完，连接随进程结束一起回收（WAL 下不会损坏数据）。
+            if (Search.IsIdle)
+            {
+                Log.Info("桌巢已退出");
+                Db.Dispose();
+            }
+            else
+            {
+                Log.Warn("索引线程仍在收尾，跳过数据库释放（进程退出时统一回收）");
+            }
         }
         catch (Exception ex) { Log.Warn("退出清理异常：" + ex.Message); }
     }

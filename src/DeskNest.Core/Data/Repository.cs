@@ -16,13 +16,13 @@ public sealed class Repository
         b.UpdatedAt = DateTimeOffset.Now;
         _db.Exec("""
         INSERT INTO boxes VALUES($id,$name,$kind,$sm,$sr,$gid,$mp,$vm,$sort,$sd,$is,$ts,$fnl,$op,$mat,$mi,$cr,$ss,
-          $lp,$ls,$ru,$ih,$ah,$hfn,$se,$shb,$mk,$anchor,$mx,$my,$w,$h,$cx,$cy,$ca,$ua)
+          $lp,$ls,$ru,$ih,$ah,$hfn,$se,$shb,$mk,$anchor,$mx,$my,$w,$h,$cx,$cy,$ca,$ua,$tstyle)
         ON CONFLICT(id) DO UPDATE SET name=$name,kind=$kind,storage_mode=$sm,storage_root=$sr,group_id=$gid,
           mapped_path=$mp,view_mode=$vm,sort_mode=$sort,sort_descending=$sd,icon_size=$is,text_size=$ts,
           file_name_lines=$fnl,opacity=$op,material=$mat,material_intensity=$mi,corner_radius=$cr,style_scope=$ss,
           lock_position=$lp,lock_size=$ls,rolled_up=$ru,is_hidden=$ih,auto_hide=$ah,hide_file_name=$hfn,
           show_extensions=$se,show_hover_buttons=$shb,monitor_key=$mk,anchor=$anchor,margin_x=$mx,margin_y=$my,
-          width=$w,height=$h,collapsed_x=$cx,collapsed_y=$cy,updated_at=$ua;
+          width=$w,height=$h,collapsed_x=$cx,collapsed_y=$cy,updated_at=$ua,title_style=$tstyle;
         """,
         ("$id", b.Id), ("$name", b.Name), ("$kind", (int)b.Kind), ("$sm", (int)b.StorageMode),
         ("$sr", b.StorageRoot), ("$gid", b.GroupId), ("$mp", b.MappedPath), ("$vm", b.ViewMode),
@@ -34,7 +34,8 @@ public sealed class Repository
         ("$shb", b.ShowHoverButtons ? 1 : 0), ("$mk", b.MonitorKey), ("$anchor", b.Anchor),
         ("$mx", b.MarginX), ("$my", b.MarginY), ("$w", b.Width), ("$h", b.Height),
         ("$cx", b.CollapsedX), ("$cy", b.CollapsedY),
-        ("$ca", b.CreatedAt.ToString("o")), ("$ua", b.UpdatedAt.ToString("o")));
+        ("$ca", b.CreatedAt.ToString("o")), ("$ua", b.UpdatedAt.ToString("o")),
+        ("$tstyle", b.TitleStyle));
     }
 
     public List<BoxRecord> Boxes() => _db.Query("SELECT * FROM boxes ORDER BY created_at", MapBox);
@@ -59,7 +60,8 @@ public sealed class Repository
         ShowExtensions = r.GetInt32(24) != 0, ShowHoverButtons = r.GetInt32(25) != 0, MonitorKey = r.GetString(26),
         Anchor = r.GetString(27), MarginX = r.GetDouble(28), MarginY = r.GetDouble(29),
         Width = r.GetDouble(30), Height = r.GetDouble(31), CollapsedX = r.GetDouble(32), CollapsedY = r.GetDouble(33),
-        CreatedAt = DateTimeOffset.Parse(r.GetString(34)), UpdatedAt = DateTimeOffset.Parse(r.GetString(35))
+        CreatedAt = DateTimeOffset.Parse(r.GetString(34)), UpdatedAt = DateTimeOffset.Parse(r.GetString(35)),
+        TitleStyle = r.GetStringOrNull(36) ?? "Standard"
     };
 
     // ---------- Items ----------
@@ -319,23 +321,57 @@ public sealed class Repository
         "SELECT id, kind, payload_json FROM journal WHERE applied=0", r => (r.GetString(0), r.GetString(1), r.GetString(2)));
 
     // ---------- 搜索索引（持久化，避免每次启动重扫全盘） ----------
+    /// <summary>
+    /// 索引落盘的串行闸门。Db 的每个语句各自加锁，但 BEGIN/COMMIT 是跨语句的：
+    /// 两个线程同时保存时，后者的 BEGIN 会插进前者的半截事务里，SQLite 直接报
+    /// "cannot start a transaction within a transaction"（退出时索引保存失败的真实原因）。
+    /// </summary>
+    private readonly object _searchIndexGate = new();
+
     public void SaveSearchIndex(IEnumerable<Services.SearchService.IndexEntry> entries)
     {
-        _db.Exec("DELETE FROM search_index;");
-        _db.Exec("BEGIN;");
-        var count = 0;
-        foreach (var e in entries)
+        lock (_searchIndexGate)
         {
-            _db.Exec("INSERT OR REPLACE INTO search_index(path,is_dir,size,mtime) VALUES($p,$d,$s,$m)",
-                ("$p", e.Path), ("$d", e.IsDirectory ? 1 : 0), ("$s", e.Size), ("$m", e.Modified.Ticks));
-            if (++count % 2000 == 0)
+            _db.Exec("BEGIN;");
+            var count = 0;
+            try
             {
+                // DELETE 放进事务里：否则中途失败会留下一张空表，用户重启后搜索"什么都没了"
+                _db.Exec("DELETE FROM search_index;");
+                foreach (var e in entries)
+                {
+                    _db.Exec("INSERT OR REPLACE INTO search_index(path,is_dir,size,mtime) VALUES($p,$d,$s,$m)",
+                        ("$p", e.Path), ("$d", e.IsDirectory ? 1 : 0), ("$s", e.Size), ("$m", e.Modified.Ticks));
+                    if (++count % 2000 == 0)
+                    {
+                        _db.Exec("COMMIT;");
+                        _db.Exec("BEGIN;");
+                    }
+                }
+                if (count == 0)
+                {
+                    // 一条都没有就提交，等于把整张索引表清空；这种情况直接放弃这次写入
+                    _db.Exec("ROLLBACK;");
+                    Log.Warn("搜索索引为空，已放弃这次落盘（不会清空已有索引）");
+                    return;
+                }
                 _db.Exec("COMMIT;");
-                _db.Exec("BEGIN;");
             }
+            catch
+            {
+                try { _db.Exec("ROLLBACK;"); } catch { }
+                throw;
+            }
+            Log.Info($"搜索索引已保存：{count} 条");
+            // 索引是"整表重写"，会留下大量空闲页；顺手回收 WAL 并让空闲页可被复用，
+            // 否则数据库文件会一轮比一轮大（曾经涨到 1.6 GB）。
+            try
+            {
+                _db.Exec("PRAGMA wal_checkpoint(TRUNCATE);");
+                _db.Exec("PRAGMA incremental_vacuum;");
+            }
+            catch (Exception ex) { Log.Warn("索引落盘后回收空间失败：" + ex.Message); }
         }
-        _db.Exec("COMMIT;");
-        Log.Info($"搜索索引已保存：{count} 条");
     }
 
     public List<Services.SearchService.IndexEntry> LoadSearchIndex() => _db.Query(

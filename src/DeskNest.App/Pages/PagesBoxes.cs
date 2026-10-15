@@ -11,6 +11,29 @@ namespace DeskNest.App.Pages;
 
 public static class BoxesPage
 {
+    /// <summary>
+    /// 新盒子的落点：默认落在"鼠标所在的那块显示器"上并逐个错开，避免多个盒子叠在同一个坐标
+    /// （以前是固定 240,160 起步，双屏时会把盒子开在用户根本没看的那块屏上）。
+    /// </summary>
+    private static (double X, double Y) NextBoxSpot()
+    {
+        var count = AppServices.Repo.Boxes().Count;
+        var offsetX = count * 30.0;
+        var offsetY = count * 20.0;
+
+        if (!AppServices.Settings.Get("displays.newBoxOnCursor", true))
+            return (240 + offsetX, 160 + offsetY);
+
+        var screen = DeskNest.Native.Win32.Monitors.ForCursor();
+        if (screen is null) return (240 + offsetX, 160 + offsetY);
+
+        var maxX = Math.Max(screen.WorkX + 16, screen.WorkRight - 200);
+        var maxY = Math.Max(screen.WorkY + 16, screen.WorkBottom - 120);
+        return (
+            Math.Min(screen.WorkX + 48 + offsetX, maxX),
+            Math.Min(screen.WorkY + 48 + offsetY, maxY));
+    }
+
     public static UIElement Build(MainWindow host)
     {
         var col = UiKit.Col();
@@ -164,12 +187,14 @@ public static class BoxesPage
                 }
                 else
                 {
+                    // 双屏用户：在哪个屏幕上点"新建"，盒子就开在那块屏上（可在「多显示器」页关掉）
+                    var spot = NextBoxSpot();
                     var box = new BoxRecord
                     {
                         Name = name,
                         Kind = BoxKind.Normal,
-                        MarginX = 240 + AppServices.Repo.Boxes().Count * 30,
-                        MarginY = 160 + AppServices.Repo.Boxes().Count * 20
+                        MarginX = spot.X,
+                        MarginY = spot.Y
                     };
                     box.StorageRoot = Path.Combine(AppPaths.DefaultManagedRoot, BoxWindow.SanitizeName(box.Name));
                     AppServices.Repo.Upsert(box);
@@ -313,7 +338,10 @@ public static class OrganizePage
         host.RefreshCurrent();
     }
 
-    public static void ShowWizard(MainWindow host)
+    /// <param name="modal">
+    /// true＝普通调用（阻塞到用户操作完）；false＝非模态打开，供文档截图模式使用。
+    /// </param>
+    public static void ShowWizard(MainWindow host, bool modal = true)
     {
         var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         var useFolder = AppServices.Settings.Get("organize.folderMode", false);
@@ -354,6 +382,7 @@ public static class OrganizePage
             UiKit.PageHeader("整理预览", "确认无误再执行；执行后底部会出现撤销入口。"),
             UiKit.Scroll(list),
             UiKit.Row(runBtn, cancelBtn));
-        preview.ShowDialog();
+        if (modal) preview.ShowDialog();
+        else preview.Show();
     }
 }

@@ -349,6 +349,19 @@ public static class AiPage
 
 public static class DataPage
 {
+    private static long DatabaseBytes()
+    {
+        try
+        {
+            var file = new FileInfo(AppPaths.DbFile);
+            return file.Exists ? file.Length : 0;
+        }
+        catch { return 0; }
+    }
+
+    private static string DatabaseSizeText() =>
+        DatabaseBytes() is var size && size > 0 ? "当前 " + UiKit.Fmt(size) : "数据库还没生成";
+
     public static UIElement Build(MainWindow host)
     {
         var col = UiKit.Col();
@@ -406,7 +419,23 @@ public static class DataPage
                     Ui.Notifications.Toast("已导出：" + file, 5);
                 }
                 catch (Exception ex) { Ui.Notifications.Toast("导出失败：" + ex.Message); }
-            })));
+            }),
+            UiKit.ActionRow("🧹", "压缩数据库", DatabaseSizeText() + "；全盘索引每次重写都会留下空闲页，压缩后还给磁盘",
+                "压缩", () =>
+                {
+                    var before = DatabaseBytes();
+                    try
+                    {
+                        AppServices.Db.Vacuum();
+                        var after = DatabaseBytes();
+                        Ui.Notifications.Toast($"数据库已压缩：{UiKit.Fmt(before)} → {UiKit.Fmt(after)}", 6);
+                    }
+                    catch (Exception ex)
+                    {
+                        Ui.Notifications.Toast("压缩失败（可能正在建索引）：" + ex.Message, 6);
+                    }
+                    host.RefreshCurrent();
+                })));
         return col;
     }
 }

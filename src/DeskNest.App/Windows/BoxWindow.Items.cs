@@ -142,21 +142,51 @@ public sealed partial class BoxWindow
 
     private void BuildItemMenu(ContextMenu menu, ItemRecord item)
     {
+        ApplyMenuTheme(menu);
         menu.Items.Clear();
-        menu.Items.Add(MenuAction("打开", () => OpenItem(item)));
-        menu.Items.Add(MenuAction("在资源管理器中显示", () => RevealItem(item)));
-        menu.Items.Add(MenuAction("复制路径", () => CopyPath(ItemPath(item))));
+        menu.Items.Add(Item("打开", () => OpenItem(item)));
+        menu.Items.Add(Item("打开方式…", () => ShowOpenWith(item), enabled: !Directory.Exists(ItemPath(item)),
+            reason: Directory.Exists(ItemPath(item)) ? "文件夹没有「打开方式」" : null));
+        menu.Items.Add(Item("在资源管理器中显示", () => RevealItem(item)));
+        menu.Items.Add(Sub("复制",
+            Item("复制完整路径", () => CopyPath(ItemPath(item))),
+            Item("复制文件名", () => CopyPath(item.DisplayName))));
         menu.Items.Add(new Separator());
-        menu.Items.Add(MenuAction("重命名…", () => RenameItem(item)));
-        menu.Items.Add(MenuAction(item.IsFavorite ? "取消固定" : "固定到顶部", () =>
+        menu.Items.Add(Item("固定到顶部", () =>
         {
             item.IsFavorite = !item.IsFavorite;
             AppServices.Repo.Upsert(item);
             ReloadItems();
-        }));
-        menu.Items.Add(MenuAction("移动到其他盒子…", () => ShowMoveToBoxMenu(item)));
+        }, checkable: true, isChecked: item.IsFavorite));
+        menu.Items.Add(Sub("移动到其他盒子", MoveTargets(item)));
+        menu.Items.Add(Item("重命名…", () => RenameItem(item)));
         menu.Items.Add(new Separator());
-        menu.Items.Add(MenuAction("从盒中移除（文件还原到原位置）", () => RemoveItem(item)));
+        menu.Items.Add(Item("从盒中移除（文件还原到原位置）", () => RemoveItem(item), danger: true));
+    }
+
+    /// <summary>其它盒子的列表（作为"移动到"的子菜单）。一个都没有时给一条禁用的说明项。</summary>
+    private object[] MoveTargets(ItemRecord item)
+    {
+        var boxes = AppServices.Repo.Boxes()
+            .Where(b => b.Id != _box.Id && b.Kind != BoxKind.Mapped)
+            .Take(12)
+            .ToList();
+        if (boxes.Count == 0)
+            return new object[] { Item("没有其他盒子", null, enabled: false, reason: "先新建一个盒子") };
+        return boxes.Select(b => Item(b.Name, () => MoveItemTo(item, b))).Cast<object>().ToArray();
+    }
+
+    /// <summary>用系统自带的"打开方式"对话框选一个程序（不写注册表、不改默认关联）。</summary>
+    private void ShowOpenWith(ItemRecord item)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start("rundll32.exe", $"shell32.dll,OpenAs_RunDLL \"{ItemPath(item)}\"");
+        }
+        catch (Exception ex)
+        {
+            Ui.Notifications.Toast("打开方式失败：" + ex.Message);
+        }
     }
 
     public void OpenItem(ItemRecord item)

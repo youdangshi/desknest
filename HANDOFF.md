@@ -5,31 +5,38 @@
 
 ## 一句话现状
 
-v1.0.0 已可运行并推送到 GitHub（`youdangshi/desknest`，main）；本轮修掉了"界面文字看不清"的主题缺陷，并补齐 Fluent 矢量图标体系与应用图标。**界面重做方案待用户三选一**（见 `docs/07-界面可读性修复与后续方案.md`）。
+**v1.1.0**：界面骨架已换成 WPF-UI 的真 `NavigationView`（汉堡折叠、分组、页脚），新增「多显示器」页与
+分级级联右键菜单，修掉 6 个真实缺陷，测试 **64 项全绿**；完整方案书见 `docs/09-桌巢-完整软件方案书-v2.0.md`
+（含 20 张由 `--shot-pages` 自动生成的真实界面截图）。
 
 ## 最近改动
 
-1. **主题可读性修复（P0）**：`IsDark` 改为由配色方案决定（护眼/浅色永不为深色）；主窗口订阅 `Theme.Changed` 并重画外壳 + 导航 + 当前页；次要/辅助文字改用实色而非透明度叠加。
-2. **对比度回归测试**：新增 `tests/DeskNest.Tests/ThemeContrastTests.cs`（9 项），四套配色下正文 ≥ 4.5:1、次要 ≥ 3:1；测试总数 **52 项全绿**。
-3. **Fluent 矢量图标体系**：从微软 MIT 上游取 55 个图标 → 生成 `src/DeskNest.App/Ui/FluentIconData.cs`；`Icons` 提供"语义键 → 图标 + 颜色"映射。
-4. **应用图标**：矢量绘制后打包 7 尺寸 `Assets/desknest.ico`（16/24/32/48/64/128/256），接到 exe / 窗口 / 托盘；生成脚本 `_re/make_icon.ps1`。
-5. **UI 组件库**：`Section` / `Row` / `Toggle` / `Banner`（信息条）/ `ExpanderRow`（可展开行）/ `Breadcrumb` / `TitleWithHelp` / `NavGroup` + `NavButton`；`ControlStyles` 用真实 `ControlTemplate` 替换 WPF 默认外观。
-6. **文档**：`docs/06-桌巢-完整软件方案书-v1.1.md`（对外交付版，11 章）、`docs/07-界面可读性修复与后续方案.md`（待确认方案）、`THIRD-PARTY-NOTICES.md`。
+1. **真 NavigationView 外壳**：`MainWindow` 用 WPF-UI `NavigationView`（`PaneHeader` 放品牌头、`IsPaneToggleVisible`、
+   `OpenPaneLength=232`、`CompactPaneLength=48`）。注意 4.3.0 的 `NavigationView` **没有 `Content` 属性**，
+   右侧内容要等模板套用后从可视化树里取 `NavigationViewContentPresenter` 挂上去（在 `Loaded` 里做）。
+2. **多显示器页**：`Monitors`（Win32 枚举，带工作区）→ `PagesDisplays.cs`；`DesktopWindows.ArrangeOn` 排布窗口、
+   `RescueOffscreen` 把跑出屏幕的窗口拉回来；新建盒子落点跟随鼠标所在屏。
+3. **分级右键菜单 + 标题栏样式**：`BoxWindow.Menu.cs` 重写（`Item` / `Sub` 两个工厂 + `ApplyMenuTheme`）；
+   `BoxRecord.TitleStyle`（Standard / Compact / Floating / Hidden）；隐藏标题栏后 Alt+拖动移动。
+4. **修 6 个真实缺陷**：图标映射（全是齿轮）、性能采样跨线程、索引保存事务嵌套、退出时释放库过早、
+   残缺索引覆盖完整索引、数据库膨胀到 1.6 GB（新增「压缩数据库」）。
+5. **文档截图模式**：`DeskNest.exe --shot-pages <目录>`（`Host/PageShotter.cs` + `WallpaperBackdrop.cs`），
+   20 张截图落在 `_re/shots/pages/`。
+6. **文档**：`docs/09-桌巢-完整软件方案书-v2.0.md`（含全部真实截图）。
 
 ## 下一步（按优先级）
 
-1. **等用户选界面方案**：A 保守修复 / B 引入 lepoco/wpfui（MIT，最接近 WinUI3 质感）/ C 自绘 Fluent 外壳。默认按"先 A 后 C"推进。
-2. 修剩余 P2 观感问题：底部标题裁切、自绘细滚动条、长说明换行时行内图标居中。
-3. **ComfyUI 素材生成**：`H:\comfyui` 已确认（有 `juggernautXL_v9Rdphoto2Lightning`）；当前**未运行**，需用户选"谁来启动"。产出：桌宠五态、空态插画 3、纹理 4、横幅 2。
-4. 多显示器管理页（可视化显示器示意图 + 每屏数量 + 全部移到此显示器）。
-5. 全盘索引优化：增量落盘、内存上限（当前一次索引 326 万条，落盘时有一次较大写事务）。
+1. **重新跑一次完整全盘索引并压缩数据库**：当前库里是 34 万条的中间态（截图模式不建索引，
+   之前几轮又都是跑到一半就退出），完整应为 300 万量级。
+2. 设置页二级下钻 + 面包屑（15 页平铺，模块多了会显长）。
+3. 桌面层「胶囊模式」。
+4. 云同步（可选收费项）：先做加密快照导出/导入。
 
 ## 未决问题 / 需要用户拍板
 
-1. 界面走 A / B / C 哪个方案。
-2. ComfyUI 由用户启动（推荐，绘世一键）还是由 agent 直接起 `main.py`（可能影响之后绘世启动、需先结束进程）。
-3. 素材清单是否增删。
-4. 是否把 `Desktop.Icon`-style 的主题跟随系统真正接到 `UISettings.ColorValuesChanged`（现在是按时间近似 + 启动时读取）。
+1. 是否现在就跑一次完整全盘索引（会占一段时间 CPU；跑完顺手压缩数据库，能退回约 1.5 GB 磁盘）。
+2. 桌面盒子的默认透明度：用户当前把「收纳窗口」透明度调到了 0.3，截图里盒子比较淡，是否要在外观页给一组预设。
+3. 是否把"跟随系统主题"真正接到 `UISettings.ColorValuesChanged`（现在只按时间近似 + 启动时读一次）。
 
 ## 环境与命令
 
@@ -42,10 +49,13 @@ cd "C:\Users\李\Desktop\项目组\desktop-organizer"
 
 & $dn build DeskNest.slnx
 & $dn test  tests\DeskNest.Tests\DeskNest.Tests.csproj      # 必须在沙箱外跑
-& $dn publish src\DeskNest.App\DeskNest.App.csproj -c Release -r win-x64 --self-contained true -o dist\DeskNest-1.0.0
+& $dn publish src\DeskNest.App\DeskNest.App.csproj -c Release -r win-x64 --self-contained true -o dist\DeskNest-1.1.0
+
+# 生成全部界面截图（文档用；会在结束时自动退出，不启动全盘索引）
+& .\dist\DeskNest-1.1.0\DeskNest.exe --shot-pages .\_re\shots\pages
 ```
 
-- 发布件：`dist\DeskNest-1.0.0\`（自包含）+ `dist\DeskNest-1.0.0-win-x64.zip`
+- 发布件：`dist\DeskNest-1.1.0\`（自包含）
 - 数据目录：`%LOCALAPPDATA%\DeskNest`（可用 `DESKNEST_DATA_DIR` 覆盖）
 - 推送：`pwsh -File tools\push-github.ps1 -Token <PAT> -Owner youdangshi -Repo desknest`（走代理 `127.0.0.1:7897`）
 

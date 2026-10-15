@@ -24,6 +24,7 @@ public sealed partial class BoxWindow : Window
     private readonly TextBlock _status;
     private readonly StackPanel _tabStrip;
     private readonly TextBlock _titleText;
+    private System.Windows.Controls.ContextMenu? _menu;
     private BoxRecord _box;
     private bool _attachedToDesktop;
     private bool _persisting;
@@ -103,6 +104,9 @@ public sealed partial class BoxWindow : Window
         var boxMenu = new System.Windows.Controls.ContextMenu();
         boxMenu.Opened += (_, _) => BuildBoxContextMenu(boxMenu);
         _root.ContextMenu = boxMenu;
+        _menu = boxMenu;
+        // 键盘也能打开盒子菜单：不用右键、不用先精确定位鼠标，键盘用户与触控板用户都受益
+        PreviewKeyDown += OnBoxKeyDown;
 
         AllowDrop = true;
         DragEnter += OnDragEnter;
@@ -112,6 +116,22 @@ public sealed partial class BoxWindow : Window
 
         MouseEnter += (_, _) => { if (_box.AutoHide) _root.Opacity = 1.0; };
         MouseLeave += (_, _) => { if (_box.AutoHide) _root.Opacity = 0.35; };
+        MouseEnter += (_, _) => UpdateTitleBarVisibility();
+        MouseLeave += (_, _) => UpdateTitleBarVisibility();
+
+        // 标题栏隐藏时没有拖动热区，用 Alt+按住盒子任意位置来移动（菜单里会提示这一点）
+        _root.MouseLeftButtonDown += (_, e) =>
+        {
+            if (!IsTitleBarHidden) return;
+            if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) return;
+            try
+            {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                if (WindowMove.BeginDrag(hwnd)) PersistGeometryNow();
+            }
+            catch (Exception ex) { Log.Warn("Alt 拖动失败：" + ex.Message); }
+            e.Handled = true;
+        };
 
         // 拖动自己实现：DragMove() 对挂在 WorkerW 下的子窗口不可靠
         WindowDrag.EnableMove(this, _titleBar, () => _box.LockPosition, PersistGeometryNow);
@@ -211,6 +231,52 @@ public sealed partial class BoxWindow : Window
         _iconPanel.Visibility = _box.ViewMode == "Icon" ? Visibility.Visible : Visibility.Collapsed;
         _listPanel.Visibility = _box.ViewMode == "Icon" ? Visibility.Collapsed : Visibility.Visible;
         _titleText.Text = _box.Name;
+        ApplyTitleStyle();
+    }
+
+    /// <summary>
+    /// 四种标题栏样式：标准（默认 30 高）/ 紧凑（22 高、字号更小）/ 悬浮（鼠标移上去才显形）/
+    /// 隐藏（整条收起，靠 Alt+拖动移动）。
+    /// </summary>
+    private void ApplyTitleStyle()
+    {
+        switch (TitleStyleKey)
+        {
+            case "Compact":
+                _titleBar.Height = 22;
+                _titleText.FontSize = 11.5;
+                break;
+            case "Floating":
+            case "Hidden":
+                _titleBar.Height = 30;
+                _titleText.FontSize = 13;
+                break;
+            default:
+                _titleBar.Height = 30;
+                _titleText.FontSize = 13;
+                break;
+        }
+        UpdateTitleBarVisibility();
+    }
+
+    /// <summary>标题栏的显示/隐藏与悬浮透明度。悬浮时仍然保留热区，所以照样能拖。</summary>
+    private void UpdateTitleBarVisibility()
+    {
+        switch (TitleStyleKey)
+        {
+            case "Hidden":
+                _titleBar.Visibility = Visibility.Collapsed;
+                _titleBar.Opacity = 0;
+                break;
+            case "Floating":
+                _titleBar.Visibility = Visibility.Visible;
+                _titleBar.Opacity = IsMouseOver ? 1.0 : 0.0;
+                break;
+            default:
+                _titleBar.Visibility = Visibility.Visible;
+                _titleBar.Opacity = 1.0;
+                break;
+        }
     }
 
     public void ChangeIconSize(int delta)
@@ -220,6 +286,80 @@ public sealed partial class BoxWindow : Window
         ApplyLook();
         ReloadItems();
     }
+
+    /// <summary>
+    /// 把盒子搬到指定位置（多显示器页的"全部移到此屏"用）。
+    /// 走 Left/Top 而不是 Win32 SetWindowPos，是为了让 LocationChanged 统一触发落盘。
+    /// </summary>
+    public void MoveTo(double left, double top)
+    {
+        Left = Math.Round(left);
+        Top = Math.Round(top);
+        PersistGeometryNow();
+    }
+
+    /// <summary>Shift+F10 或键盘"菜单键"打开盒子菜单（不依赖右键）。</summary>
+    private void OnBoxKeyDown(object sender, KeyEventArgs e)
+    {
+        var isMenuKey = e.Key == Key.Apps || (e.Key == Key.F10 && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+        if (!isMenuKey) return;
+        OpenContextMenu();
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 打开盒子菜单（键盘路径与截图模式共用）。
+    /// expandSubmenu 传父项标题时，顺手把它那一级子菜单也展开（截图/演示用）。
+    /// </summary>
+    public void OpenContextMenu(string? expandSubmenu = null)
+    {
+        if (_menu is null) return;
+        _menu.PlacementTarget = _root;
+        _menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        _menu.IsOpen = true;
+        // 诊断用：弹出菜单是独立窗口，位置/尺寸只有打开后才知道（截图模式曾拍不到它）
+        Log.Info($"盒子菜单已打开：IsOpen={_menu.IsOpen}，项数={_menu.Items.Count}，" +
+                 $"尺寸={_menu.ActualWidth:0}x{_menu.ActualHeight:0}，" +
+                 $"源={(_menu.Parent is null ? "无" : _menu.Parent.GetType().Name)}");
+        LogMenuWindow();
+        if (string.IsNullOrWhiteSpace(expandSubmenu)) return;
+        // 子菜单必须等菜单自己完成布局之后才肯展开（立刻设会被 WPF 回滚成 false）
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var parent = _menu?.Items.OfType<System.Windows.Controls.MenuItem>()
+                .FirstOrDefault(m => string.Equals(m.Header as string, expandSubmenu, StringComparison.Ordinal));
+            if (parent is null) return;
+            parent.IsSubmenuOpen = true;
+            Log.Info($"子菜单 {expandSubmenu}：IsSubmenuOpen={parent.IsSubmenuOpen}，子项={parent.Items.Count}");
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>把弹出菜单那个真实 HWND 的位置写进日志（用来确认它到底开在哪儿）。</summary>
+    private void LogMenuWindow()
+    {
+        try
+        {
+            if (_menu is null) return;
+            if (System.Windows.PresentationSource.FromVisual(_menu) is System.Windows.Interop.HwndSource src
+                && DeskNest.Native.Win32.WindowShot.Bounds(src.Handle) is { } r)
+                Log.Info($"菜单窗口句柄={src.Handle}，位置={r.X},{r.Y}，尺寸={r.W}x{r.H}");
+            else
+                Log.Warn("菜单窗口句柄取不到（弹出源未建立）");
+        }
+        catch (Exception ex) { Log.Warn("读取菜单窗口失败：" + ex.Message); }
+    }
+
+    /// <summary>收起盒子菜单。</summary>
+    public void CloseContextMenu()
+    {
+        if (_menu is not null) _menu.IsOpen = false;
+    }
+
+    /// <summary>
+    /// 拍文档截图前的整备：把"自动隐藏"造成的整体变淡恢复成正常不透明度，
+    /// 否则截图里盒子是灰蒙蒙的、看起来像渲染坏了。拍完调用 <see cref="ApplyLook"/> 还原。
+    /// </summary>
+    public void PrepareForShot() => _root.Opacity = 1.0;
 
     private void PersistGeometry()
     {

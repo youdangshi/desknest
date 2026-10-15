@@ -21,6 +21,13 @@ public sealed class PerfSampler : IDisposable
     private readonly List<PerfSample> _history = new();
     private readonly object _gate = new();
 
+    /// <summary>
+    /// 采样在后台计时器线程上跑，但订阅者往往是界面元素（实时数字、曲线）。
+    /// 跨线程直接改控件会抛"调用线程无法访问此对象"，于是这里记下启动时的同步上下文，
+    /// 把事件送回它所在的线程（WPF 下就是 UI 线程）；没有上下文时（控制台/测试）就地触发。
+    /// </summary>
+    private SynchronizationContext? _uiContext;
+
     public PerfSampler(
         Func<(double cpu, double memPercent, long used, long total, double up, double down)> systemReader,
         Func<(int? load, double? temp)>? gpuReader = null)
@@ -37,6 +44,7 @@ public sealed class PerfSampler : IDisposable
 
     public void Start()
     {
+        _uiContext ??= SynchronizationContext.Current;
         Running = true;
         _timer.Change(0, IntervalMs);
     }
@@ -67,9 +75,29 @@ public sealed class PerfSampler : IDisposable
                 _history.Add(s);
                 if (_history.Count > 600) _history.RemoveRange(0, _history.Count - 600);
             }
-            Sampled?.Invoke(s);
+            RaiseSampled(s);
         }
         catch (Exception ex) { Log.Warn("性能采样异常：" + ex.Message); }
+    }
+
+    private void RaiseSampled(PerfSample sample)
+    {
+        var handler = Sampled;
+        if (handler is null) return;
+
+        var context = _uiContext;
+        if (context is null || ReferenceEquals(context, SynchronizationContext.Current))
+        {
+            handler(sample);
+            return;
+        }
+
+        // 回到 UI 线程；单个订阅者出问题不应该拖垮整条采样链
+        context.Post(_ =>
+        {
+            try { handler(sample); }
+            catch (Exception ex) { Log.Warn("性能订阅者异常：" + ex.Message); }
+        }, null);
     }
 
     public List<PerfSample> History()

@@ -1,4 +1,5 @@
 using System.Threading;
+using DeskNest.App.Host;
 
 namespace DeskNest.App;
 
@@ -11,9 +12,21 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // 文档截图模式：DeskNest.exe --shot-pages <目录>
+        // 逐个打开每个设置页并抓图，跑完自动退出（发版时生成界面截图用，不影响正常启动）。
+        var shotFlag = Array.IndexOf(args, "--shot-pages");
+        if (shotFlag >= 0 && shotFlag + 1 < args.Length)
+            PageShotter.OutputDir = args[shotFlag + 1];
+
         _mutex = new Mutex(true, MutexName, out var isFirst);
         if (!isFirst)
         {
+            // 截图模式必须是唯一实例：否则会连到已运行的实例上，抓不到图还给用户添乱
+            if (PageShotter.OutputDir is not null)
+            {
+                Console.Error.WriteLine("已有桌巢实例在运行，请先退出再执行截图模式。");
+                return;
+            }
             // 已有实例：交给它把界面唤出来（通过本地接口的 /health 探测后退出）
             try
             {

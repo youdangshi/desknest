@@ -16,6 +16,9 @@ public sealed class Db : IDisposable
         _conn.Open();
         Exec("PRAGMA journal_mode=WAL;");
         Exec("PRAGMA synchronous=NORMAL;");
+        // 让 SQLite 能按需把空闲页还给文件系统（增量回收）。对已有库要跑一次 VACUUM 才生效，
+        // 所以「数据与备份」页提供了一个"压缩数据库"按钮。
+        Exec("PRAGMA auto_vacuum=INCREMENTAL;");
         Migrate();
     }
 
@@ -33,7 +36,7 @@ public sealed class Db : IDisposable
           lock_size INTEGER, rolled_up INTEGER, is_hidden INTEGER, auto_hide INTEGER, hide_file_name INTEGER,
           show_extensions INTEGER, show_hover_buttons INTEGER, monitor_key TEXT, anchor TEXT,
           margin_x REAL, margin_y REAL, width REAL, height REAL, collapsed_x REAL, collapsed_y REAL,
-          created_at TEXT, updated_at TEXT);
+          created_at TEXT, updated_at TEXT, title_style TEXT);
         CREATE TABLE IF NOT EXISTS items(
           id TEXT PRIMARY KEY, box_id TEXT, kind INTEGER, display_name TEXT, source_path TEXT,
           stored_path TEXT, ext TEXT, size_bytes INTEGER, source_modified TEXT, added_at TEXT,
@@ -84,6 +87,21 @@ public sealed class Db : IDisposable
         """);
         if (QueryScalar("SELECT value FROM meta WHERE key='schema'") is null)
             Exec("INSERT INTO meta(key,value) VALUES('schema','1');");
+
+        // 老版本的库缺列就补上（SQLite 的 ADD COLUMN 会追加到末尾，正好与 SELECT * 的顺序一致）
+        EnsureColumn("boxes", "title_style", "TEXT");
+    }
+
+    /// <summary>表里没有这一列就加上；已有则什么都不做。</summary>
+    private void EnsureColumn(string table, string column, string declaration)
+    {
+        try
+        {
+            var exists = Query($"PRAGMA table_info({table});", r => r.GetString(1))
+                .Any(name => string.Equals(name, column, StringComparison.OrdinalIgnoreCase));
+            if (!exists) Exec($"ALTER TABLE {table} ADD COLUMN {column} {declaration};");
+        }
+        catch (Exception ex) { Log.Warn($"补列失败 {table}.{column}：{ex.Message}"); }
     }
 
     public void Exec(string sql, params (string, object?)[] args)
@@ -124,6 +142,17 @@ public sealed class Db : IDisposable
     }
 
     public long Count(string table) => Convert.ToInt64(QueryScalar($"SELECT COUNT(*) FROM {table}") ?? 0L);
+
+    /// <summary>
+    /// 整库压缩（VACUUM）：把删掉的行真正还给文件系统，并让 auto_vacuum 开始生效。
+    /// 全盘索引是"整表重写"，会留下大量空闲页——实测数据库会长到 1.6 GB。
+    /// 顺带把 WAL 截断，避免日志文件跟着一起膨胀。耗时可能几十秒，别在索引进行中调用。
+    /// </summary>
+    public void Vacuum()
+    {
+        Exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        Exec("VACUUM;");
+    }
 
     public void Dispose()
     {

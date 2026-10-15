@@ -32,6 +32,14 @@ public sealed class SearchService : IDisposable
 
     private readonly Repository? _repo;
     private volatile bool _dirty;
+    private readonly object _saveGate = new();
+    private Thread? _worker;
+
+    /// <summary>启动时从数据库里加载到的条数（用来判断"这轮扫描是不是比库里还少"）。</summary>
+    private int _loadedCount;
+
+    /// <summary>本轮全盘扫描是否完整走完（被取消＝没走完）。</summary>
+    private volatile bool _walkCompleted;
 
     public SearchService(Repository? repo = null)
     {
@@ -50,7 +58,7 @@ public sealed class SearchService : IDisposable
     /// <summary>开始索引。roots 为空＝所有固定磁盘。</summary>
     public void StartIndexing(IEnumerable<string>? roots = null)
     {
-        StopIndexing();
+        StopIndexing(waitForWorker: false);   // 重建索引时不等旧线程，免得点一下按钮界面卡几秒
         LoadFromStore();
         _cts = new CancellationTokenSource();
         var token = _cts.Token;
@@ -65,16 +73,20 @@ public sealed class SearchService : IDisposable
         if (include.Count == 0) Log.Warn("没有找到可索引的固定磁盘");
 
         IsIndexing = true;
+        _walkCompleted = false;
         var worker = new Thread(() =>
         {
             try
             {
+                var cancelled = false;
                 foreach (var root in include)
                 {
-                    if (token.IsCancellationRequested) break;
+                    if (token.IsCancellationRequested) { cancelled = true; break; }
                     // 排除规则只针对"被索引根目录下的相对路径"，避免索引范围指到含 Temp 字样的目录时被整体跳过
                     Walk(root, root, token, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
                 }
+                if (token.IsCancellationRequested) cancelled = true;
+                _walkCompleted = !cancelled;
                 LastIndexedAt = DateTimeOffset.Now;
                 Log.Info($"索引完成：{_index.Count} 条");
                 SaveToStore();
@@ -88,6 +100,7 @@ public sealed class SearchService : IDisposable
         })
         { IsBackground = true, Priority = ThreadPriority.BelowNormal, Name = "DeskNest.Indexer" };
         worker.Start();
+        _worker = worker;
     }
 
     private void Walk(string root, string dir, CancellationToken token, HashSet<string> visited)
@@ -139,12 +152,32 @@ public sealed class SearchService : IDisposable
         return parts.Any(p => ExcludeFolderNames.Contains(p, StringComparer.OrdinalIgnoreCase));
     }
 
-    public void StopIndexing()
+    /// <param name="waitForWorker">
+    /// true：等索引线程收工再返回（退出流程用，否则紧接着释放数据库会撞车）；
+    /// false：立刻返回，用于"重建索引"这种马上要起新线程的场景，不能让界面卡住。
+    /// </param>
+    public void StopIndexing(bool waitForWorker = true)
     {
         try { _cts?.Cancel(); } catch { }
         _cts = null;
+        // 退出时如果索引线程还在写，紧接着 Dispose 数据库就会撞上
+        // "Cannot access a disposed object"；先等它收工（最多 5 秒）再落盘。
+        var worker = _worker;
+        _worker = null;
+        if (worker is not null && worker.IsAlive && waitForWorker && !worker.Join(TimeSpan.FromSeconds(20)))
+        {
+            Log.Warn("索引线程未在 20 秒内结束，交给它自己收尾保存");
+            return;
+        }
         SaveToStore();
     }
+
+    /// <summary>
+    /// 索引线程是否真的收工了。退出流程靠它决定"能不能安全释放数据库"：
+    /// 线程还在跑（通常是在把几百万条索引写盘）时释放连接，就会抛
+    /// "Cannot access a disposed object"。
+    /// </summary>
+    public bool IsIdle => !IsIndexing && (_worker is null || !_worker.IsAlive);
 
     /// <summary>从数据库加载上次的索引，启动即可搜索（不必等重扫）。</summary>
     public int LoadFromStore()
@@ -154,6 +187,7 @@ public sealed class SearchService : IDisposable
         {
             var rows = _repo.LoadSearchIndex();
             foreach (var e in rows) _index[e.Path] = e;
+            _loadedCount = rows.Count;
             if (rows.Count > 0)
             {
                 LastIndexedAt = DateTimeOffset.Now;
@@ -171,13 +205,26 @@ public sealed class SearchService : IDisposable
 
     private void SaveToStore()
     {
-        if (_repo is null || _index.IsEmpty || !_dirty) return;
-        try
+        if (_repo is null) return;
+        // 索引线程与退出流程都可能触发保存；这里排队进来，避免两个事务叠在一起
+        lock (_saveGate)
         {
-            _repo.SaveSearchIndex(_index.Values);
-            _dirty = false;
+            if (_index.IsEmpty || !_dirty) return;
+            // 关键保护：扫描被中途取消、而且结果比数据库里的还少，说明这轮没扫完。
+            // 这时候照常落盘会把用户完整的索引覆盖成残缺的一份（真实发生过：
+            // 326 万条被 28 万条顶掉），所以宁可这一轮不落盘，等下次扫完再说。
+            if (!_walkCompleted && _index.Count < _loadedCount)
+            {
+                Log.Warn($"扫描未完成（{_index.Count} 条 < 库中 {_loadedCount} 条），跳过落盘以免覆盖完整索引");
+                return;
+            }
+            try
+            {
+                _repo.SaveSearchIndex(_index.Values);
+                _dirty = false;
+            }
+            catch (Exception ex) { Log.Warn("保存搜索索引失败：" + ex.Message); }
         }
-        catch (Exception ex) { Log.Warn("保存搜索索引失败：" + ex.Message); }
     }
 
     public void Clear()
