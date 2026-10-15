@@ -17,11 +17,15 @@ public sealed class ThemeTokens
     public double Opacity { get; set; } = 0.82;
     public bool ReduceMotion { get; set; }
 
+    /// <summary>
+    /// 明暗判定必须由配色方案决定，不能靠时间猜：护眼（浅底深字）在夜里会被判成深色，
+    /// 卡片取深色、文字取深棕，直接看不清（v1.0.0 的真实缺陷）。
+    /// </summary>
     public bool IsDark => Scheme switch
     {
-        ColorScheme.Light => false,
         ColorScheme.Dark or ColorScheme.PureBlack => true,
-        _ => DateTime.Now.Hour is >= 19 or < 7
+        ColorScheme.Light or ColorScheme.EyeCare => false,
+        _ => DateTime.Now.Hour is >= 19 or < 7    // 仅"跟随系统"时按时间近似
     };
 
     public Color Background => Scheme switch
@@ -53,11 +57,22 @@ public sealed class ThemeTokens
     }
 
     public Brush AccentBrush => new SolidColorBrush(Accent);
-    public Brush SecondaryBrush => new SolidColorBrush(Foreground) { Opacity = 0.62 };
-    public Brush TertiaryBrush => new SolidColorBrush(Foreground) { Opacity = 0.42 };
-    public Brush CardBrush => new SolidColorBrush(IsDark
-        ? Color.FromRgb(0x28, 0x28, 0x2E)
-        : Color.FromRgb(0xFF, 0xFF, 0xFF));
+    /// <summary>
+    /// 次要/辅助文字用"与背景混合后的实色"，而不是"前景色加透明度"：
+    /// 透明度会与身后不同表面（背景 / 卡片 / 悬停淡底）混出不同结果，容易糊成一片。
+    /// </summary>
+    public Brush SecondaryBrush => new SolidColorBrush(SecondaryColor);
+    public Brush TertiaryBrush => new SolidColorBrush(TertiaryColor);
+    /// <summary>卡片底色（浅色/护眼用白、深色用近黑），单独暴露成 Color 便于对比度测试。</summary>
+    public Color CardColor => Scheme switch
+    {
+        ColorScheme.PureBlack => Color.FromRgb(0x14, 0x14, 0x18),
+        ColorScheme.EyeCare => Color.FromRgb(0xFF, 0xFC, 0xF4),
+        ColorScheme.Light => Color.FromRgb(0xFF, 0xFF, 0xFF),
+        ColorScheme.Dark => Color.FromRgb(0x28, 0x28, 0x2E),
+        _ => IsDark ? Color.FromRgb(0x28, 0x28, 0x2E) : Color.FromRgb(0xFF, 0xFF, 0xFF)
+    };
+    public Brush CardBrush => new SolidColorBrush(CardColor);
     public Brush BorderBrush => new SolidColorBrush(Foreground) { Opacity = IsDark ? 0.12 : 0.08 };
     public Brush DangerBrush => new SolidColorBrush(Color.FromRgb(0xE2, 0x53, 0x53));
     public Brush SuccessBrush => new SolidColorBrush(Color.FromRgb(0x3F, 0xB9, 0x50));
@@ -74,6 +89,13 @@ public static class Theme
     {
         Current = tokens;
         Changed?.Invoke();
+    }
+
+    /// <summary>把当前令牌应用到窗口外壳（背景/前景）。运行时换主题必须调用，否则只剩页面内容变色。</summary>
+    public static void ApplyToShell(System.Windows.Window window)
+    {
+        window.Background = Current.BackgroundBrush;
+        window.Foreground = Current.ForegroundBrush;
     }
 
     /// <summary>把"全局令牌 + 单窗口覆盖"合成最终令牌。</summary>

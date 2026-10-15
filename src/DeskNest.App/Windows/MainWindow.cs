@@ -83,6 +83,10 @@ public sealed class MainWindow : Window
         BuildNav();
         NavigateTo("overview");
 
+        // 运行时切换主题：外壳与当前页必须一起重画（v1.0.0 只重画了页面内容，才出现"深底深字"）
+        Theme.Changed += OnThemeChanged;
+        Closed += (_, _) => Theme.Changed -= OnThemeChanged;
+
         SourceInitialized += (_, _) =>
         {
             try
@@ -291,4 +295,18 @@ public sealed class MainWindow : Window
     }
 
     public void RefreshCurrent() => NavigateTo(_current);
+
+    private void OnThemeChanged()
+    {
+        try
+        {
+            Theme.ApplyToShell(this);
+            BuildNav();
+            NavigateTo(_current);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("把主题应用到主窗口失败：" + ex.Message);
+        }
+    }
 }

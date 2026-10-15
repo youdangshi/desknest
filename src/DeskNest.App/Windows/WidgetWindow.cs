@@ -102,6 +102,9 @@ public sealed partial class WidgetWindow : Window
         ApplyLook();
         BuildContent();
 
+        Theme.Changed += ApplyLook;
+        Closed += (_, _) => Theme.Changed -= ApplyLook;
+
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(widget.Kind == WidgetKind.SystemMonitor ? 1 : 5) };
         _timer.Tick += (_, _) => Refresh();
         _timer.Start();

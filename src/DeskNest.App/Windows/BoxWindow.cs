@@ -124,6 +124,9 @@ public sealed partial class BoxWindow : Window
         ApplyLook();
         ReloadItems();
         RefreshGroupTabsPublic();
+
+        Theme.Changed += ApplyLook;
+        Closed += (_, _) => Theme.Changed -= ApplyLook;
     }
 
     private void OnSourceInitialized()
