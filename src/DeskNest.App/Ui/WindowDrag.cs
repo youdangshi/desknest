@@ -55,6 +55,13 @@ public static class WindowDrag
 
     public static void EnableMove(Window window, FrameworkElement handle, Func<bool>? locked = null, Action? onFinished = null)
     {
+        // 关键：容器必须有背景（透明也行）才参与命中测试。
+        // 背景为 null 的 StackPanel/Border 在空白处"抓空气"——这就是"拖不动"的根因。
+        if (handle is System.Windows.Controls.Panel panel && panel.Background is null)
+            panel.Background = Brushes.Transparent;
+        else if (handle is Border border && border.Background is null)
+            border.Background = Brushes.Transparent;
+
         var dragging = false;
         Point startScreen = default;
         double startLeft = 0, startTop = 0;
@@ -64,6 +71,24 @@ public static class WindowDrag
         {
             if (locked?.Invoke() == true) return;
             if (e.ClickCount == 2) return;   // 双击留给调用方（卷起/展开）
+
+            // 首选：系统自己的移动循环（跟手，多显示器/DPI 都不用我们操心）
+            try
+            {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+                if (DeskNest.Native.Win32.WindowMove.BeginDrag(hwnd))
+                {
+                    onFinished?.Invoke();
+                    e.Handled = true;
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Core.Log.Warn("原生拖动失败，退回手动拖动：" + ex.Message);
+            }
+
+            // 兜底：自己算增量（正常走不到这里）
             dragging = true;
             startScreen = handle.PointToScreen(e.GetPosition(handle));
             startLeft = window.Left;

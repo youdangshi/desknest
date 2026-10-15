@@ -27,6 +27,7 @@ public sealed partial class BoxWindow : Window
     private BoxRecord _box;
     private bool _attachedToDesktop;
     private bool _persisting;
+    private DateTime _lastPersist = DateTime.MinValue;
 
     public string BoxId => _box.Id;
     public BoxRecord Box => _box;
@@ -95,7 +96,13 @@ public sealed partial class BoxWindow : Window
             Effect = UiKit.SoftShadow(),
             Child = dock
         };
-        Content = WindowDrag.WrapWithResizeGrips(_root, this, () => _box.LockSize, MinWidth, MinHeight, PersistGeometry);
+        Content = WindowDrag.WrapWithResizeGrips(_root, this, () => _box.LockSize, MinWidth, MinHeight, PersistGeometryNow);
+        _titleBar.ToolTip = "按住标题栏拖动盒子；右下角或任意边拖动可调整大小";
+
+        // 右键盒子任意空白处 = 盒子菜单（以前只有标题栏的 ⋯ 按钮能打开，是个交互缺口）
+        var boxMenu = new System.Windows.Controls.ContextMenu();
+        boxMenu.Opened += (_, _) => BuildBoxContextMenu(boxMenu);
+        _root.ContextMenu = boxMenu;
 
         AllowDrop = true;
         DragEnter += OnDragEnter;
@@ -107,7 +114,7 @@ public sealed partial class BoxWindow : Window
         MouseLeave += (_, _) => { if (_box.AutoHide) _root.Opacity = 0.35; };
 
         // 拖动自己实现：DragMove() 对挂在 WorkerW 下的子窗口不可靠
-        WindowDrag.EnableMove(this, _titleBar, () => _box.LockPosition, PersistGeometry);
+        WindowDrag.EnableMove(this, _titleBar, () => _box.LockPosition, PersistGeometryNow);
         _titleBar.MouseLeftButtonDown += TitleBar_MouseDown;
         MouseWheel += (_, e) =>
         {
@@ -187,6 +194,7 @@ public sealed partial class BoxWindow : Window
             Cursor = Cursors.Hand,
             ToolTip = tip
         };
+        b.Style = ControlStyles.IconButton();   // 不套样式会露出 WPF 默认按钮的悬停底色
         b.Click += (_, e) => { action(); e.Handled = true; };
         return b;
     }
@@ -216,6 +224,8 @@ public sealed partial class BoxWindow : Window
     private void PersistGeometry()
     {
         if (_persisting) return;
+        // 拖动/缩放时 LocationChanged 高频触发，这里限流（每 250ms 最多落盘一次），避免每移动 1px 就写一次数据库
+        if (DateTime.UtcNow - _lastPersist < TimeSpan.FromMilliseconds(250)) return;
         _persisting = true;
         try
         {
@@ -238,6 +248,13 @@ public sealed partial class BoxWindow : Window
         }
         catch { }
         finally { _persisting = false; }
+    }
+
+    /// <summary>拖动/缩放结束后强制落盘一次（配合限流）。
+    public void PersistGeometryNow()
+    {
+        _lastPersist = DateTime.MinValue;
+        PersistGeometry();
     }
 
     private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)

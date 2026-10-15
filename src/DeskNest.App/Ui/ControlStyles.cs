@@ -78,6 +78,52 @@ public static class ControlStyles
     public static Style Button() => BuildButton(accent: false);
     public static Style AccentButton() => BuildButton(accent: true);
 
+    /// <summary>
+    /// 导航项样式：完全扁平（没有默认按钮的边框/底色/悬停蓝块），
+    /// 背景由调用方传入（选中态用强调色淡底），悬停时在同色系上加深一点。
+    /// 不套这个样式时，WPF 默认按钮模板会画出自己的浅蓝悬停块——就是导航里那块"多出来的半段"。
+    /// </summary>
+    public static Style NavButtonStyle()
+    {
+        var style = new Style(typeof(Button));
+        var border = new FrameworkElementFactory(typeof(Border), "Bd");
+        border.SetBinding(Border.BackgroundProperty, new Binding(nameof(Control.Background))
+        { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(Tokens.CornerSmall));
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(0));
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
+        presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        border.AppendChild(presenter);
+
+        var template = new ControlTemplate(typeof(Button)) { VisualTree = border };
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BackgroundProperty, Tint(0.10), "Bd"));
+        var pressed = new Trigger { Property = System.Windows.Controls.Primitives.ButtonBase.IsPressedProperty, Value = true };
+        pressed.Setters.Add(new Setter(Border.BackgroundProperty, Tint(0.18), "Bd"));
+        template.Triggers.Add(hover);
+        template.Triggers.Add(pressed);
+
+        style.Setters.Add(new Setter(Control.TemplateProperty, template));
+        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
+        style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
+        style.Setters.Add(new Setter(FrameworkElement.CursorProperty, System.Windows.Input.Cursors.Hand));
+        return style;
+    }
+
+    /// <summary>强调色淡底（导航选中态用）。</summary>
+    public static SolidColorBrush AccentTint(double opacity)
+    {
+        var c = Theme.Current.Accent;
+        return new SolidColorBrush(System.Windows.Media.Color.FromArgb((byte)(Math.Clamp(opacity, 0, 1) * 255), c.R, c.G, c.B));
+    }
+
+    private static SolidColorBrush Tint(double opacity)
+    {
+        var c = Theme.Current.Foreground;
+        return new SolidColorBrush(System.Windows.Media.Color.FromArgb((byte)(Math.Clamp(opacity, 0, 1) * 255), c.R, c.G, c.B));
+    }
+
     /// <summary>图标按钮：30×30、圆角 5、透明底（悬停出现淡底）。</summary>
     public static Style IconButton()
     {

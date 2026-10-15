@@ -50,6 +50,16 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
+    // ---------- 拖动窗口：用 Win32 原生移动循环，比手动算坐标可靠 ----------
+    internal const int WM_NCLBUTTONDOWN = 0x00A1;
+    internal const int HTCAPTION = 2;
+
+    [DllImport("user32.dll")]
+    internal static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
     // ---------- 热键 ----------
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);

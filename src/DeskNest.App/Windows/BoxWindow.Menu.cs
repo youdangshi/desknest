@@ -14,6 +14,16 @@ public sealed partial class BoxWindow
     private void ShowBoxMenu()
     {
         var menu = new ContextMenu();
+        BuildBoxMenu(menu);
+        menu.IsOpen = true;
+    }
+
+    /// <summary>右键盒子空白处也会调用它（与标题栏 ⋯ 按钮共用同一套条目）。</summary>
+    public void BuildBoxContextMenu(ContextMenu menu) => BuildBoxMenu(menu);
+
+    private void BuildBoxMenu(ContextMenu menu)
+    {
+        menu.Items.Clear();
         menu.Items.Add(MenuAction("添加文件…", AddFilesByDialog));
         menu.Items.Add(MenuAction("打开存储文件夹", OpenStorageFolder));
         menu.Items.Add(new Separator());
@@ -37,7 +47,6 @@ public sealed partial class BoxWindow
         menu.Items.Add(MenuAction("把我的外观应用到所有盒（统一样式）", ApplyLookToAllBoxes));
         menu.Items.Add(new Separator());
         menu.Items.Add(MenuAction("删除盒子（盒内文件还原到原位置）", DeleteBox));
-        menu.IsOpen = true;
     }
 
     private static MenuItem MenuAction(string header, Action action)
@@ -161,6 +170,8 @@ public sealed partial class BoxWindow
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand
             };
+            tab.Style = ControlStyles.NavButtonStyle();
+            if (active) tab.Background = Theme.Desktop.AccentBrush;
             tab.Click += (_, e) =>
             {
                 SwitchToMember(m.Id);

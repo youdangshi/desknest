@@ -136,6 +136,7 @@ public sealed partial class WidgetWindow : Window
             Foreground = Theme.Desktop.SecondaryBrush,
             Cursor = Cursors.Hand
         };
+        b.Style = ControlStyles.IconButton();   // 同上：避免默认按钮外观
         b.Click += (_, e) => { action(); e.Handled = true; };
         return b;
     }

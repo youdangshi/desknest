@@ -294,6 +294,8 @@ public static partial class UiKit
             Cursor = Cursors.Hand,
             Tag = new CornerRadius(Tokens.CornerSmall)
         };
+        button.Style = ControlStyles.NavButtonStyle();
+        if (active) button.Background = ControlStyles.AccentTint(0.16);
         button.Click += (_, _) => onClick();
         return button;
     }
