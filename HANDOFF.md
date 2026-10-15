@@ -71,6 +71,18 @@ cd "C:\Users\李\Desktop\项目组\desktop-organizer"
 8. **自包含发布时模块 dll 在 RID 子目录**（`bin\Release\net10.0-windows\win-x64\`），复制模块的 MSBuild 目标要两条路径兜底。
 9. **git 推送**：本机直连 GitHub 不通，必须 `-c http.proxy=http://127.0.0.1:7897`；目录属主与沙箱用户不同时先加 `safe.directory` 例外。
 10. **图标/Logo 不用图像生成模型**：按 `imagegen` 技能自身规则，图标这类要匹配现有图标体系、需多尺寸清晰的素材应走矢量（我们就是这样做的）。
+11. **WPF-UI 4.3.0 的 `NavigationView` 没有 `Content` 属性**：右侧内容要在 `Loaded` 里从可视化树取
+    `NavigationViewContentPresenter` 挂上去（它是私有成员，只能这么拿）；`SettingsCard` / `SettingsExpander`
+    在 4.3.0 也不存在，只有 `CardControl`。
+12. **桌面层窗口永远在普通窗口之下**：截图 / 演示时会被编辑器窗口盖住；要先 `DesktopLayer.Detach` 临时置顶，
+    拍完 `DesktopLayer.Attach` 装回去。盒子的 `Left/Top` 在挂载前后都是屏幕坐标，摘挂不会跳位。
+13. **`MenuItem.IsSubmenuOpen` 要等菜单完成布局才设得住**：同一个消息里直接设会被 WPF 回滚成 `false`，
+    要用 `Dispatcher.BeginInvoke(..., DispatcherPriority.Loaded)`；`MenuItem.IsHighlighted` 的 setter 是 internal，别用。
+14. **截图模式不要启动全盘索引**：索引跑到一半就被退出，会把残缺索引写进库（现已有保护，但没必要触发）。
+15. **数据库会膨胀**：索引是整表重写，SQLite 不主动归还空闲页，实测涨到 1.6 GB。落盘后回收 WAL，
+    必要时用「数据与备份 → 压缩数据库」（VACUUM）。
+16. **GDI `CopyFromScreen` 抓的是屏幕上真实显示的画面**：目标窗口被别的窗口盖住就拍不到；
+    抓之前要先确认它在最前（置顶 + 激活），或者别指望它会出现在截图里。
 
 ## 关键文件
 
@@ -78,8 +90,15 @@ cd "C:\Users\李\Desktop\项目组\desktop-organizer"
 | --- | --- |
 | `src/DeskNest.App/Ui/DesignTokens.cs` | 设计令牌（间距/圆角/字号/内容列宽） |
 | `src/DeskNest.App/Ui/ControlStyles.cs` | 控件模板（按钮/图标按钮/输入框/下拉/开关） |
-| `src/DeskNest.App/Ui/Icons.cs` + `FluentIconData.cs` | 图标体系与 55 个 Fluent 矢量图标 |
+| `src/DeskNest.App/Ui/Icons.cs` + `FluentIconData.cs` | 图标体系：语义键/emoji/**码位** → SymbolRegular（码位翻译别删，删了导航全变齿轮） |
 | `src/DeskNest.App/Ui/Theme.cs` + `Contrast.cs` | 主题令牌与 WCAG 对比度计算 |
 | `src/DeskNest.App/Ui/UiKit*.cs` | 设置页组件库（卡片/行/开关/信息条/可展开行/面包屑） |
-| `src/DeskNest.App/Windows/MainWindow.cs` | 主窗口外壳（导航分组 + 顶部搜索 + 内容列限宽） |
-| `docs/06-*` / `docs/07-*` | 完整方案书 / 待确认的界面方案 |
+| `src/DeskNest.App/Windows/MainWindow.cs` | 主窗口外壳（NavigationView + 顶部搜索 + 内容列限宽 + 页面注册表） |
+| `src/DeskNest.App/Windows/BoxWindow.Menu.cs` | 盒子菜单（`Item`/`Sub` 两个工厂 + `ApplyMenuTheme`）与重命名/合并/剪贴板等动作 |
+| `src/DeskNest.App/Windows/BoxWindow.cs` | 盒子窗口：标题样式、拖动、缩放、落盘限流 |
+| `src/DeskNest.App/Pages/PagesDisplays.cs` | 多显示器页（屏幕示意图 + 搬运 + 防跑丢） |
+| `src/DeskNest.App/Host/PageShotter.cs` + `WallpaperBackdrop.cs` | `--shot-pages` 文档截图模式 |
+| `src/DeskNest.Core/Services/SearchService.cs` | 全盘索引：扫描、落盘保护（不许用残缺索引覆盖完整索引） |
+| `src/DeskNest.Core/Data/Repository.cs` | SQLite 仓储：盒子/条目/规则/索引落盘（含事务闸门） |
+| `docs/09-*` | **当前对外交付的完整方案书 v2.0（含 20 张自动生成的真实截图）** |
+| `docs/06-*` / `docs/07-*` / `docs/08-*` | 早期方案书 / 待确认界面方案 / 桌面交互规格与鼠标测试清单 |
