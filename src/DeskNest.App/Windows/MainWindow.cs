@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using DeskNest.App.Host;
 using DeskNest.App.Pages;
 using DeskNest.App.Ui;
@@ -26,9 +27,13 @@ public sealed class MainWindow : Window
     /// <summary>所有已注册页面的键（自动化测试用）。</summary>
     public IReadOnlyCollection<string> PageKeys => _pages.Keys;
 
+    /// <summary>导航里显示的标题（自动化测试用：必须无重复）。</summary>
+    public IReadOnlyList<string> PageTitles => _pages.Values.Select(v => v.Title).ToList();
+
     public MainWindow()
     {
         Title = "桌巢 DeskNest";
+        Icon = AppIcon.WindowIcon;
         Width = 1080;
         Height = 740;
         MinWidth = 860;
@@ -77,6 +82,23 @@ public sealed class MainWindow : Window
 
         BuildNav();
         NavigateTo("overview");
+
+        SourceInitialized += (_, _) =>
+        {
+            try
+            {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                DwmEffects.PreferRoundCorners(hwnd);
+                var material = AppServices.Settings.Get("theme.material", "Acrylic");
+                if (string.Equals(material, "Mica", StringComparison.OrdinalIgnoreCase))
+                {
+                    // 让 Mica 透出来：窗口自身底色改成几乎全透明，失败时下面的 Set 会被跳过，界面仍是自绘底色
+                    if (DwmEffects.TrySetBackdrop(hwnd, DwmEffects.Backdrop.Mica))
+                        Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0));
+                }
+            }
+            catch { }
+        };
     }
 
     private UIElement BuildTopBar()
@@ -85,30 +107,31 @@ public sealed class MainWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var searchBox = new TextBox
-        {
-            FontSize = 12.5,
-            Padding = new Thickness(14, 8, 14, 8),
-            Width = 300,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Background = Theme.Current.CardBrush,
-            Foreground = Theme.Current.ForegroundBrush,
-            BorderThickness = new Thickness(1),
-            BorderBrush = Theme.Current.BorderBrush,
-            ToolTip = "搜索设置项：例如 开机 / 透明度 / 统计 / 热键 / 桌宠 / 出图"
-        };
+        var searchBox = UiKit.InputWithPlaceholder("搜索设置…（开机 / 透明度 / 统计 / 热键）", _ => { }, 320);
+        searchBox.HorizontalAlignment = HorizontalAlignment.Center;
+        searchBox.TextAlignment = TextAlignment.Left;
+        searchBox.Margin = new Thickness(0);
         searchBox.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Enter) SearchSettings(searchBox.Text.Trim());
         };
         Grid.SetColumn(searchBox, 0);
 
+        // 搜索框右侧放一个放大镜（DeskBox 的搜索框里也有），让"这是搜索"一眼可辨
+        var searchWrap = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+        searchWrap.Children.Add(searchBox);
+        var lens = Icons.Vector("search", 16, Theme.Current.TertiaryColor);
+        lens.Margin = new Thickness(-28, 0, 0, 0);
+        lens.IsHitTestVisible = false;
+        searchWrap.Children.Add(lens);
+        Grid.SetColumn(searchWrap, 0);
+
         var quick = new StackPanel { Orientation = Orientation.Horizontal };
         quick.Children.Add(UiKit.Btn("快捷搜索", () => (Application.Current as App)?.ShowSearch(), true));
         quick.Children.Add(UiKit.Btn("一键整理", OpenOrganizeWizard));
         Grid.SetColumn(quick, 1);
 
-        grid.Children.Add(searchBox);
+        grid.Children.Add(searchWrap);
         grid.Children.Add(quick);
         return grid;
     }
@@ -154,38 +177,79 @@ public sealed class MainWindow : Window
 
     private void RegisterPages()
     {
-        _pages["overview"] = ("概览", "🏠", OverviewPage.Build);
-        _pages["boxes"] = ("收纳盒", "🗂", BoxesPage.Build);
-        _pages["organize"] = ("整理与规则", "🧹", OrganizePage.Build);
-        _pages["widgets"] = ("桌面组件", "🧩", WidgetsPage.Build);
-        _pages["appearance"] = ("外观与主题", "🎨", AppearancePage.Build);
-        _pages["modules"] = ("模块", "🔌", ModulesPage.Build);
-        _pages["data"] = ("数据与备份", "💾", DataPage.Build);
-        _pages["about"] = ("关于", "ℹ", AboutPage.Build);
+        // 注册页面：键和标题都去重，避免导航里出现两个同名项
+        void AddPage(string key, string title, string icon, Func<MainWindow, UIElement> build)
+        {
+            if (_pages.ContainsKey(key))
+            {
+                Log.Warn($"页面键重复，已忽略：{key}");
+                return;
+            }
+            if (_pages.Values.Any(v => v.Title == title))
+            {
+                Log.Warn($"页面标题重复，已忽略：{title}");
+                return;
+            }
+            _pages[key] = (title, icon, build);
+        }
 
-        if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.ComfyUi))
-            _pages["comfy"] = ("AI 出图（ComfyUI）", "🖼", ComfyUiPage.Build);
+        AddPage("overview", "概览", Icons.Home, OverviewPage.Build);
+        AddPage("boxes", "收纳盒", Icons.Folder, BoxesPage.Build);
+        AddPage("organize", "整理与规则", Icons.Organize, OrganizePage.Build);
+        AddPage("widgets", "桌面组件", Icons.Widgets, WidgetsPage.Build);
+        AddPage("appearance", "外观与主题", Icons.Appearance, AppearancePage.Build);
+        AddPage("modules", "模块", Icons.Modules, ModulesPage.Build);
+        AddPage("data", "数据与备份", Icons.Data, DataPage.Build);
+        AddPage("about", "关于", Icons.About, AboutPage.Build);
+
         if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.Pet))
-            _pages["pet"] = ("桌宠", "🐾", PetPage.Build);
+            AddPage("pet", "桌宠", Icons.Pet, PetPage.Build);
         if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.PerfMonitor))
-            _pages["perf"] = ("性能监视", "📈", PerfPage.Build);
+            AddPage("perf", "性能监视", Icons.Performance, PerfPage.Build);
         if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.UsageStats))
-            _pages["usage"] = ("使用统计", "⏱", UsagePage.Build);
+            AddPage("usage", "使用统计", Icons.Usage, UsagePage.Build);
         if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.ApiPanel))
-            _pages["api"] = ("API 面板", "💰", ApiPage.Build);
+            AddPage("api", "API 面板", Icons.Api, ApiPage.Build);
         if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.PowerSchedule))
-            _pages["power"] = ("计划关机", "⏻", PowerPage.Build);
+            AddPage("power", "计划关机", Icons.Power, PowerPage.Build);
         if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.AiBridge))
-            _pages["ai"] = ("AI 接口", "🔗", AiPage.Build);
+            AddPage("ai", "AI 接口", Icons.Ai, AiPage.Build);
     }
 
     private void BuildNav()
     {
         _nav.Children.Clear();
-        foreach (var (key, value) in _pages)
+        string? lastGroup = null;
+        var groups = new Dictionary<string, string>
         {
-            var target = key;
-            _nav.Children.Add(UiKit.NavButton(value.Glyph, value.Title, key == _current, () => NavigateTo(target)));
+            ["overview"] = "通用",
+            ["boxes"] = "通用",
+            ["organize"] = "通用",
+            ["widgets"] = "通用",
+            ["appearance"] = "外观",
+            ["modules"] = "功能",
+            ["pet"] = "功能",
+            ["perf"] = "功能",
+            ["usage"] = "功能",
+            ["api"] = "功能",
+            ["power"] = "功能",
+            ["ai"] = "功能",
+            ["data"] = "维护",
+            ["about"] = "维护"
+        };
+        // 按固定分组顺序输出（否则"维护"夹在中间会把"功能"拆成两段，出现两个同名分组标签）
+        foreach (var group in new[] { "通用", "外观", "功能", "维护" })
+        {
+            var members = _pages.Where(p => (groups.TryGetValue(p.Key, out var g) ? g : "功能") == group).ToList();
+            if (members.Count == 0) continue;
+
+            _nav.Children.Add(UiKit.NavGroup(group, lastGroup is null ? 4 : 16));
+            lastGroup = group;
+            foreach (var (key, value) in members)
+            {
+                var target = key;
+                _nav.Children.Add(UiKit.NavButton(value.Glyph, value.Title, key == _current, () => NavigateTo(target)));
+            }
         }
     }
 
@@ -200,7 +264,14 @@ public sealed class MainWindow : Window
         LastPageError = null;
         try
         {
-            _contentHost.Child = UiKit.Scroll(entry.Build(this));
+            // 内容限制最大宽度并左对齐：宽屏下不会拉成一整行，阅读更舒服
+            var body = new Border
+            {
+                MaxWidth = Tokens.ContentMaxWidth,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Child = entry.Build(this)
+            };
+            _contentHost.Child = UiKit.Scroll(body);
         }
         catch (Exception ex)
         {

@@ -27,7 +27,7 @@ public sealed class Tray : IDisposable
 
         _icon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = AppIcon.TrayIcon,
             Text = "桌巢 DeskNest",
             Visible = true,
             ContextMenuStrip = menu

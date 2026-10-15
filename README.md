@@ -1,5 +1,9 @@
 # 桌巢 DeskNest
 
+# 桌巢 DeskNest
+
+<img src="src/DeskNest.App/Assets/desknest-logo-256.png" alt="DeskNest" width="96" />
+
 把乱桌面变成"会自己收拾、能常驻有用信息、还有点好看"的桌面。
 
 Windows 10/11 桌面管家：**桌面整理 + 桌面组件 + 工作伙伴桌宠 + 本地 AI 出图**，四个能力在一个程序里。
@@ -90,13 +94,17 @@ docs/                 策划书、架构、冒烟清单
 
 ## 文档
 
+- **[完整软件方案书 v1.1](docs/06-桌巢-完整软件方案书-v1.1.md)**：定位 / 竞品与美术资源研究 / 功能清单 / 架构 / UI 设计规范 / 测试 / 路线图（对外交付用这一份）
 - [策划书 v0.1](docs/01-策划书-v0.1.md)：竞品逆向、功能清单、数据模型、逐屏 UI 设计
 - [策划书 v0.2](docs/02-策划书-v0.2.md)：你的全部反馈落地、大白话技术路线、安装包逆向流水线
 - [v0.3 增补](docs/03-界面改版与ComfyUI接入.md)：行式设置界面改版 + 本地 ComfyUI 出图
 - [架构说明](docs/ARCHITECTURE.md)、[冒烟清单](docs/smoke-checklist.md)
+- [第三方组件与素材声明](THIRD-PARTY-NOTICES.md)
 
 ## 许可
 
 MIT，见 [LICENSE](LICENSE)。第三方组件的许可见「关于」页。
+
+界面图标来自微软 [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons)（MIT）；应用图标为项目自绘（矢量绘制后打包 16–256 七个尺寸）。
 
 本项目**只借鉴竞品的设计思路**，不包含任何竞品的代码或素材。

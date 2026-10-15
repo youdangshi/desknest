@@ -36,6 +36,7 @@ public sealed partial class BoxWindow : Window
         _box = box;
 
         WindowStyle = WindowStyle.None;
+        Icon = AppIcon.WindowIcon;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
         ShowInTaskbar = false;

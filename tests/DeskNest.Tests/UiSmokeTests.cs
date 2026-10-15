@@ -25,6 +25,12 @@ public sealed class UiSmokeTests
                 var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
 
                 var window = new MainWindow();
+
+                // 导航项必须唯一：早前版本出现过两个「桌宠」，这里做成回归断言
+                var titles = window.PageTitles;
+                if (titles.Count != titles.Distinct().Count())
+                    failures.Add("导航存在重复标题：" + string.Join(" / ", titles));
+
                 foreach (var key in window.PageKeys.ToList())
                 {
                     window.NavigateTo(key);

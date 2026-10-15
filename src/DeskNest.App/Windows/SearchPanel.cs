@@ -65,6 +65,7 @@ public sealed class SearchPanel
 
         _window = new Window
         {
+            Icon = AppIcon.WindowIcon,
             WindowStyle = WindowStyle.None,
             AllowsTransparency = true,
             Background = Brushes.Transparent,

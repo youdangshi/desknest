@@ -25,7 +25,7 @@ public static class OverviewPage
                 () => host.NavigateTo("boxes")),
             UiKit.Row("🧩", $"桌面组件 {widgets.Count} 个", $"待办 {todos.Count(t => !t.IsDone)} 项未完成", null,
                 () => host.NavigateTo("widgets")),
-            UiKit.Row("🔍", $"搜索索引 {AppServices.Search.IndexedCount} 条",
+            UiKit.Row("🔍", $"搜索索引 {AppServices.Search.IndexedCount:N0} 条",
                 AppServices.Search.IsIndexing ? "正在后台建立索引…（可以正常使用）" : "已就绪，Alt+Space 呼出搜索", null,
                 () => (Application.Current as App)?.ShowSearch())));
 
@@ -61,22 +61,33 @@ public static class OverviewPage
         col.Children.Add(UiKit.Section("最近整理（可回滚）", rows.ToArray()));
 
         col.Children.Add(UiKit.Section("熟悉一下",
-            UiKit.ToggleRow("🔔", "双击桌面空白处切换桌面图标", "和 ZenDesktop 那种效果一致，可随时关掉",
-                AppServices.Settings.Get("desktop.doubleClick", true), v => AppServices.Settings.Set("desktop.doubleClick", v)),
+            // 可展开行：开关 + 折叠箭头（像 DeskBox 的「开机自动启动 → 静默启动」）
+            UiKit.ExpanderRow("🚀", "开机自动启动", "登录 Windows 后在后台启动",
+                UiKit.Toggle(AppServices.Settings.Get("app.autoStart", false), v =>
+                {
+                    AppServices.Settings.Set("app.autoStart", v);
+                    Native.Win32.AutoStart.SetEnabled(v);
+                }),
+                UiKit.ToggleRow("🌙", "静默启动", "启动时不弹主窗口，只留托盘图标",
+                    AppServices.Settings.Get("app.silentStart", false), v => AppServices.Settings.Set("app.silentStart", v)),
+                UiKit.ToggleRow("🔔", "双击桌面空白处切换桌面图标", "和 ZenDesktop 那种效果一致，可随时关掉",
+                    AppServices.Settings.Get("desktop.doubleClick", true), v => AppServices.Settings.Set("desktop.doubleClick", v))),
             UiKit.ToggleRow("🖥", "隐藏桌面图标", "图标与桌面盒可以共存：先隐藏图标，只留分类盒",
                 AppServices.Settings.Get("desktop.iconsHidden", false), v =>
                 {
                     AppServices.Settings.Set("desktop.iconsHidden", v);
                     Native.Win32.DesktopIcons.SetVisible(!v);
                 }),
-            UiKit.ToggleRow("🚀", "开机自动启动", "登录 Windows 后在后台启动，不打扰你",
-                AppServices.Settings.Get("app.autoStart", false), v =>
-                {
-                    AppServices.Settings.Set("app.autoStart", v);
-                    Native.Win32.AutoStart.SetEnabled(v);
-                }),
-            UiKit.ToggleRow("🌙", "静默启动", "启动时不弹主窗口，只留托盘图标",
-                AppServices.Settings.Get("app.silentStart", false), v => AppServices.Settings.Set("app.silentStart", v))));
+            // 说明条：DeskBox 里也有一条几乎一样的（"为什么快捷键有时没有反应?"）
+            UiKit.Row("⌨", "快捷键", "Alt+Space 呼出搜索，Alt+` 显示/隐藏桌面层", null)));
+
+        col.Children.Add(UiKit.Banner(BannerKind.Info,
+            "如果快捷键有时没反应：当前窗口是以管理员身份运行的（例如任务管理器），Windows 会暂时屏蔽全局热键给它的输入。这是系统限制，不是桌巢的问题。",
+            "为什么快捷键有时没有反应？"));
+
+        col.Children.Add(UiKit.Banner(BannerKind.Warning,
+            "收纳盒的存储目录默认在 C 盘（" + AppPaths.DefaultManagedRoot + "）。把文件收进盒子里只是「换了位置」，不会释放 C 盘空间；想省 C 盘空间，请在「收纳盒」页把存储位置改到其他盘。",
+            "关于收纳与磁盘空间"));
         return col;
     }
 }

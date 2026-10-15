@@ -26,6 +26,7 @@ public sealed partial class WidgetWindow : Window
     {
         _widget = widget;
         WindowStyle = WindowStyle.None;
+        Icon = AppIcon.WindowIcon;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
         ShowInTaskbar = false;

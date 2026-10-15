@@ -58,15 +58,24 @@ public static partial class UiKit
         var b = new Button
         {
             Content = text,
-            Padding = new Thickness(12, 6, 12, 6),
-            Margin = new Thickness(0, 0, 8, 0),
-            FontSize = 12.5,
-            Cursor = System.Windows.Input.Cursors.Hand,
-            BorderThickness = new Thickness(1),
-            BorderBrush = Theme.Current.BorderBrush,
-            Foreground = primary ? Brushes.White : Theme.Current.ForegroundBrush,
-            Background = primary ? Theme.Current.AccentBrush : Theme.Current.CardBrush
+            Margin = new Thickness(0, 0, Tokens.Space8, 0),
+            FontFamily = new FontFamily(Tokens.UiFontFamily)
         };
+        b.Style = primary ? ControlStyles.AccentButton() : ControlStyles.Button();
+        b.Click += (_, _) => onClick();
+        return b;
+    }
+
+    /// <summary>图标按钮（30×30，透明底，悬停出现淡底）。</summary>
+    public static Button IconBtn(string glyphCode, Action onClick, string? tooltip = null)
+    {
+        var b = new Button
+        {
+            Content = Icons.Glyph(glyphCode, 14),
+            Margin = new Thickness(Tokens.Space2, 0, 0, 0),
+            ToolTip = tooltip
+        };
+        b.Style = ControlStyles.IconButton();
         b.Click += (_, _) => onClick();
         return b;
     }
@@ -117,7 +126,13 @@ public static partial class UiKit
 
     public static ComboBox Combo(IEnumerable<string> items, string selected, Action<string> onChanged, double width = 150)
     {
-        var cb = new ComboBox { Width = width, FontSize = 12.5, Margin = new Thickness(0, 2, 10, 2) };
+        var cb = new ComboBox
+        {
+            Width = width,
+            Margin = new Thickness(0, Tokens.Space4, Tokens.Space8, Tokens.Space4),
+            FontFamily = new FontFamily(Tokens.UiFontFamily)
+        };
+        cb.Style = ControlStyles.ComboBoxStyle();
         foreach (var i in items) cb.Items.Add(i);
         cb.SelectedItem = selected;
         cb.SelectionChanged += (_, _) => { if (cb.SelectedItem is string s) onChanged(s); };
@@ -130,18 +145,35 @@ public static partial class UiKit
         {
             Text = text,
             Width = width,
-            FontSize = 12.5,
-            Margin = new Thickness(0, 2, 10, 2),
+            FontFamily = new FontFamily(Tokens.UiFontFamily),
+            Margin = new Thickness(0, Tokens.Space4, Tokens.Space8, Tokens.Space4),
             AcceptsReturn = multiline,
             TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
-            MinHeight = multiline ? 60 : 0
+            MinHeight = multiline ? 64 : 32
         };
+        tb.Style = ControlStyles.TextBoxStyle();
         tb.TextChanged += (_, _) => onChanged(tb.Text);
         return tb;
     }
 
+    /// <summary>带占位提示的输入框（占位文本走模板里的 Tag）。</summary>
+    public static TextBox InputWithPlaceholder(string placeholder, Action<string> onChanged, double width = 200)
+    {
+        var tb = Input("", onChanged, width);
+        tb.Tag = placeholder;
+        return tb;
+    }
+
     public static ScrollViewer Scroll(UIElement content)
-        => new() { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(4) };
+        => new()
+        {
+            Content = content,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            // 禁用横向滚动条：内容稍宽就冒横条，是观感"出戏"的元凶之一
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Padding = new Thickness(0, 0, Tokens.Space8, 0),
+            Focusable = false
+        };
 
     public static string Fmt(long bytes) => bytes switch
     {

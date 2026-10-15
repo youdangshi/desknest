@@ -42,6 +42,16 @@ public sealed class ThemeTokens
 
     public Brush BackgroundBrush => new SolidColorBrush(Background);
     public Brush ForegroundBrush => new SolidColorBrush(Foreground);
+    /// <summary>次要/更弱的前景色（与背景混合，深浅色都自然）。</summary>
+    public Color SecondaryColor => Mix(Foreground, Background, 0.38);
+    public Color TertiaryColor => Mix(Foreground, Background, 0.58);
+
+    private static Color Mix(Color fg, Color bg, double towardBg)
+    {
+        double Lerp(byte a, byte b) => Math.Round(a * (1 - towardBg) + b * towardBg);
+        return Color.FromRgb((byte)Lerp(fg.R, bg.R), (byte)Lerp(fg.G, bg.G), (byte)Lerp(fg.B, bg.B));
+    }
+
     public Brush AccentBrush => new SolidColorBrush(Accent);
     public Brush SecondaryBrush => new SolidColorBrush(Foreground) { Opacity = 0.62 };
     public Brush TertiaryBrush => new SolidColorBrush(Foreground) { Opacity = 0.42 };
