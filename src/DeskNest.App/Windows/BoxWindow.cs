@@ -40,7 +40,7 @@ public sealed partial class BoxWindow : Window
         AllowsTransparency = true;
         Background = Brushes.Transparent;
         ShowInTaskbar = false;
-        ResizeMode = ResizeMode.CanResizeWithGrip;
+        ResizeMode = ResizeMode.NoResize;   // 无边框窗口没有系统缩放边框，缩放交给 WindowDrag 的手柄
         MinWidth = 160;
         MinHeight = 96;
         Width = Math.Max(160, box.Width);
@@ -58,7 +58,7 @@ public sealed partial class BoxWindow : Window
             Text = "▦",
             FontSize = 12,
             Margin = new Thickness(8, 6, 6, 0),
-            Foreground = Theme.Current.SecondaryBrush
+            Foreground = Theme.Desktop.SecondaryBrush
         });
         _titleBar.Children.Add(_titleText);
         _titleBar.Children.Add(_tabStrip);
@@ -91,24 +91,24 @@ public sealed partial class BoxWindow : Window
         {
             CornerRadius = new CornerRadius(box.CornerRadius),
             BorderThickness = new Thickness(1),
-            BorderBrush = Theme.Current.BorderBrush,
+            BorderBrush = Theme.Desktop.BorderBrush,
             Effect = UiKit.SoftShadow(),
             Child = dock
         };
-        Content = _root;
+        Content = WindowDrag.WrapWithResizeGrips(_root, this, () => _box.LockSize, MinWidth, MinHeight, PersistGeometry);
 
         AllowDrop = true;
         DragEnter += OnDragEnter;
         DragOver += OnDragOver;
-        DragLeave += (_, _) => _root.BorderBrush = Theme.Current.BorderBrush;
+        DragLeave += (_, _) => _root.BorderBrush = Theme.Desktop.BorderBrush;
         Drop += OnDrop;
 
         MouseEnter += (_, _) => { if (_box.AutoHide) _root.Opacity = 1.0; };
         MouseLeave += (_, _) => { if (_box.AutoHide) _root.Opacity = 0.35; };
 
+        // 拖动自己实现：DragMove() 对挂在 WorkerW 下的子窗口不可靠
+        WindowDrag.EnableMove(this, _titleBar, () => _box.LockPosition, PersistGeometry);
         _titleBar.MouseLeftButtonDown += TitleBar_MouseDown;
-        _titleBar.MouseMove += TitleBar_MouseMove;
-        _titleBar.MouseLeftButtonUp += TitleBar_MouseUp;
         MouseWheel += (_, e) =>
         {
             if (_box.GroupId is not null && AppServices.Settings.Get("group.wheelSwitch", true))
@@ -142,7 +142,7 @@ public sealed partial class BoxWindow : Window
 
     private static Brush MakeBackground(BoxRecord box)
     {
-        var t = Theme.Resolve(box.Material, box.MaterialIntensity, box.Opacity, box.CornerRadius,
+        var t = Theme.ResolveDesktop(box.Material, box.MaterialIntensity, box.Opacity, box.CornerRadius,
             box.StyleScope == StyleScope.Inherit);
         var bg = t.Background;
         var alpha = (byte)(Math.Clamp(t.Opacity, 0.25, 1.0) * 255);
@@ -183,7 +183,7 @@ public sealed partial class BoxWindow : Window
             Margin = new Thickness(2, 0, 0, 0),
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            Foreground = Theme.Current.SecondaryBrush,
+            Foreground = Theme.Desktop.SecondaryBrush,
             Cursor = Cursors.Hand,
             ToolTip = tip
         };
@@ -193,11 +193,11 @@ public sealed partial class BoxWindow : Window
 
     public void ApplyLook()
     {
-        var t = Theme.Resolve(_box.Material, _box.MaterialIntensity, _box.Opacity, _box.CornerRadius,
+        var t = Theme.ResolveDesktop(_box.Material, _box.MaterialIntensity, _box.Opacity, _box.CornerRadius,
             _box.StyleScope == StyleScope.Inherit);
         _root.CornerRadius = new CornerRadius(t.CornerRadius);
         _root.Background = MakeBackground(_box);
-        _root.BorderBrush = Theme.Current.BorderBrush;
+        _root.BorderBrush = Theme.Desktop.BorderBrush;
         _root.Opacity = _box.AutoHide ? 0.35 : 1.0;
         _scroll.Visibility = _box.RolledUp ? Visibility.Collapsed : Visibility.Visible;
         _iconPanel.Visibility = _box.ViewMode == "Icon" ? Visibility.Visible : Visibility.Collapsed;
@@ -250,9 +250,5 @@ public sealed partial class BoxWindow : Window
             e.Handled = true;
             return;
         }
-        if (!_box.LockPosition) DragMove();
     }
-
-    private void TitleBar_MouseMove(object sender, MouseEventArgs e) { }
-    private void TitleBar_MouseUp(object sender, MouseButtonEventArgs e) => PersistGeometry();
 }

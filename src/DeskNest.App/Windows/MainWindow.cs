@@ -164,7 +164,6 @@ public sealed class MainWindow : Window
             (new[] { "余额", "api", "key", "模型" }, "api"),
             (new[] { "备份", "恢复", "诊断" }, "data"),
             (new[] { "模块", "启用", "关闭" }, "modules"),
-            (new[] { "comfy", "出图", "生成图片", "画图" }, "comfy")
         };
         var lower = query.ToLowerInvariant();
         foreach (var (keys, page) in map)

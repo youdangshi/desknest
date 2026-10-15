@@ -46,7 +46,7 @@ public sealed partial class BoxWindow
         Padding = new Thickness(14, 18, 14, 18),
         CornerRadius = new CornerRadius(8),
         BorderThickness = new Thickness(1),
-        BorderBrush = Theme.Current.BorderBrush,
+        BorderBrush = Theme.Desktop.BorderBrush,
         Child = UiKit.Col(
             UiKit.Text("把文件拖进来", 12.5, secondary: true),
             UiKit.Text("直接拖放即可；也可以在标题栏点 ＋", 11, secondary: true))
@@ -74,7 +74,7 @@ public sealed partial class BoxWindow
             {
                 Text = DisplayName(item),
                 FontSize = _box.TextSize,
-                Foreground = Theme.Current.ForegroundBrush,
+                Foreground = Theme.Desktop.ForegroundBrush,
                 TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.Wrap,
                 MaxHeight = _box.TextSize * 1.5 * Math.Max(1, _box.FileNameLines),
@@ -112,7 +112,7 @@ public sealed partial class BoxWindow
         {
             Text = DisplayName(item),
             FontSize = _box.TextSize,
-            Foreground = Theme.Current.ForegroundBrush,
+            Foreground = Theme.Desktop.ForegroundBrush,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(6, 0, 6, 0)
@@ -213,7 +213,7 @@ public sealed partial class BoxWindow
             Width = 380,
             Height = 210,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
-            Background = Theme.Current.BackgroundBrush,
+            Background = Theme.Desktop.BackgroundBrush,
             Content = UiKit.Card(null, UiKit.Col(
                 UiKit.Text("新名称（存储的文件会一起改名，还原时使用新名称）", 11.5, secondary: true),
                 input,

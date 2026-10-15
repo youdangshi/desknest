@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Controls;
 using DeskNest.App.Host;
 using DeskNest.App.Ui;
 using DeskNest.App.Windows;
@@ -10,99 +9,76 @@ using DeskNest.Core.Services;
 
 namespace DeskNest.App.Pages;
 
+/// <summary>
+/// 外观与主题：**设计窗口（主窗口/设置页）与收纳窗口（桌面盒/组件/桌宠）分成两套独立设置**，
+/// 互不影响；各自的配色/材质/强度/透明度/圆角都即时生效。
+/// </summary>
 public static class AppearancePage
 {
+    private static readonly string[] Schemes = { "FollowSystem", "Dark", "Light", "PureBlack", "EyeCare" };
+    private static readonly string[] Materials = { "Acrylic", "Mica", "Solid" };
+
     public static UIElement Build(MainWindow host)
     {
         var col = UiKit.Col();
-        var theme = Theme.Current;
-        col.Children.Add(UiKit.PageHeader("外观与主题", "两级样式：先定一套全局观感，个别盒子或组件可以单独设置。"));
+        col.Children.Add(UiKit.PageHeader("外观与主题",
+            "设计窗口（主窗口与设置页）与收纳窗口（桌面盒、组件、桌宠）是两套独立外观，可以分开调节。"));
 
-        col.Children.Add(UiKit.Section("全局样式",
-            UiKit.ComboRow("🌗", "配色", "跟随系统 / 深色 / 浅色 / 纯黑 / 护眼",
-                new[] { "FollowSystem", "Dark", "Light", "PureBlack", "EyeCare" }, theme.Scheme.ToString(), value =>
+        col.Children.Add(Section("设计窗口（主窗口与设置页）", "theme.shell", () => Theme.Shell, host));
+        col.Children.Add(Section("收纳窗口（桌面盒 / 组件 / 桌宠）", "theme.desktop", () => Theme.Desktop, host));
+
+        col.Children.Add(UiKit.Section("互相复制",
+            UiKit.ActionRow("→", "把设计窗口的外观复制到收纳窗口", "让桌面盒也变成主窗口那套配色与材质", "复制",
+                () => CopyTokens("theme.shell", "theme.desktop", host)),
+            UiKit.ActionRow("←", "把收纳窗口的外观复制到设计窗口", "反向复制", "复制",
+                () => CopyTokens("theme.desktop", "theme.shell", host))));
+
+        col.Children.Add(UiKit.Section("统一或独立（针对桌面盒与组件）",
+            UiKit.ActionRow("🎯", "所有盒与组件统一成收纳窗口的设置", "等于一键回到「大家都一样」，但只影响桌面层", "统一",
+                () =>
                 {
-                    if (!Enum.TryParse<ColorScheme>(value, out var scheme)) return;
-                    theme.Scheme = scheme;
-                    AppServices.Settings.Set("theme.scheme", value);
-                    Theme.Apply(theme);
+                    foreach (var box in AppServices.Repo.Boxes())
+                    {
+                        box.StyleScope = StyleScope.Inherit;
+                        box.Material = Theme.Desktop.Material.ToString();
+                        box.MaterialIntensity = Theme.Desktop.MaterialIntensity;
+                        box.Opacity = Theme.Desktop.Opacity;
+                        box.CornerRadius = Theme.Desktop.CornerRadius;
+                        AppServices.Repo.Upsert(box);
+                    }
+                    foreach (var widget in AppServices.Repo.Widgets())
+                    {
+                        widget.StyleScope = StyleScope.Inherit;
+                        widget.Material = Theme.Desktop.Material.ToString();
+                        widget.MaterialIntensity = Theme.Desktop.MaterialIntensity;
+                        widget.Opacity = Theme.Desktop.Opacity;
+                        widget.CornerRadius = Theme.Desktop.CornerRadius;
+                        AppServices.Repo.Upsert(widget);
+                    }
                     (Application.Current as App)?.Desktop.ApplyLookToAll();
-                    host.RefreshCurrent();
-                }),
-            UiKit.ComboRow("🪟", "材质", "亚克力最通透，纯色最省资源",
-                new[] { "Acrylic", "Mica", "Solid" }, theme.Material.ToString(), value =>
+                    Ui.Notifications.Toast("已把桌面盒与组件统一成收纳窗口的设置", 3);
+                }, true),
+            UiKit.ActionRow("🧩", "全部改为各自独立样式", "此后逐个调整互不影响（可在「收纳盒」页单独调）", "独立",
+                () =>
                 {
-                    if (!Enum.TryParse<MaterialKind>(value, out var material)) return;
-                    theme.Material = material;
-                    AppServices.Settings.Set("theme.material", value);
-                    Theme.Apply(theme);
-                    (Application.Current as App)?.Desktop.ApplyLookToAll();
-                }),
-            UiKit.SliderRow("💧", "材质强度", null, 0.1, 1.0, theme.MaterialIntensity, v =>
-            {
-                theme.MaterialIntensity = Math.Round(v, 2);
-                AppServices.Settings.Set("theme.intensity", theme.MaterialIntensity);
-                Theme.Apply(theme);
-                (Application.Current as App)?.Desktop.ApplyLookToAll();
-            }, theme.MaterialIntensity.ToString("0.00")),
-            UiKit.SliderRow("🌫", "默认透明度", "统一所有窗口用下面的按钮", 0.3, 1.0, theme.Opacity, v =>
-            {
-                theme.Opacity = Math.Round(v, 2);
-                AppServices.Settings.Set("theme.opacity", theme.Opacity);
-                Theme.Apply(theme);
-                (Application.Current as App)?.Desktop.ApplyLookToAll();
-            }, theme.Opacity.ToString("0.00")),
-            UiKit.SliderRow("⬜", "圆角", null, 0, 28, theme.CornerRadius, v =>
-            {
-                theme.CornerRadius = (int)v;
-                AppServices.Settings.Set("theme.corner", theme.CornerRadius);
-                Theme.Apply(theme);
-                (Application.Current as App)?.Desktop.ApplyLookToAll();
-            }, ((int)theme.CornerRadius).ToString()),
-            UiKit.ToggleRow("🌀", "减少动效", "无障碍：动画降级为淡入淡出",
-                theme.ReduceMotion, v =>
-                {
-                    theme.ReduceMotion = v;
-                    AppServices.Settings.Set("theme.reduceMotion", v);
-                    Theme.Apply(theme);
+                    foreach (var box in AppServices.Repo.Boxes())
+                    {
+                        box.StyleScope = StyleScope.Override;
+                        AppServices.Repo.Upsert(box);
+                    }
+                    Ui.Notifications.Toast("已改为各自独立样式", 4);
                 })));
 
-        col.Children.Add(UiKit.Section("统一或独立",
-            UiKit.ActionRow("🎯", "把所有盒子与组件统一成全局样式", "等于一键回到「大家都一样」", "统一", () =>
-            {
-                foreach (var box in AppServices.Repo.Boxes())
-                {
-                    box.StyleScope = StyleScope.Inherit;
-                    box.Material = Theme.Current.Material.ToString();
-                    box.MaterialIntensity = Theme.Current.MaterialIntensity;
-                    box.Opacity = Theme.Current.Opacity;
-                    box.CornerRadius = Theme.Current.CornerRadius;
-                    AppServices.Repo.Upsert(box);
-                }
-                foreach (var widget in AppServices.Repo.Widgets())
-                {
-                    widget.StyleScope = StyleScope.Inherit;
-                    widget.Material = Theme.Current.Material.ToString();
-                    widget.MaterialIntensity = Theme.Current.MaterialIntensity;
-                    widget.Opacity = Theme.Current.Opacity;
-                    widget.CornerRadius = Theme.Current.CornerRadius;
-                    AppServices.Repo.Upsert(widget);
-                }
-                (Application.Current as App)?.Desktop.ApplyLookToAll();
-                Ui.Notifications.Toast("已统一为全局样式", 3);
-            }, true),
-            UiKit.ActionRow("🧩", "全部改为各自独立样式", "此后逐个调整互不影响（像 DeskBox 那样单独控制）", "独立", () =>
-            {
-                foreach (var box in AppServices.Repo.Boxes())
-                {
-                    box.StyleScope = StyleScope.Override;
-                    AppServices.Repo.Upsert(box);
-                }
-                Ui.Notifications.Toast("已改为各自独立样式，可在「收纳盒」页逐个调整", 4);
-            })));
-
         var background = AppServices.Settings.Get("theme.background.image", "");
-        col.Children.Add(UiKit.Section("背景（可选）",
+        col.Children.Add(UiKit.Section("动效与背景",
+            UiKit.ToggleRow("🌀", "减少动效", "无障碍：动画降级为淡入淡出",
+                Theme.Shell.ReduceMotion, v =>
+                {
+                    var tokens = Theme.Shell.Clone();
+                    tokens.ReduceMotion = v;
+                    AppServices.Settings.Set("theme.reduceMotion", v);
+                    Theme.ApplyShell(tokens);
+                }),
             UiKit.Row("🖼", "给盒子与组件加背景", string.IsNullOrEmpty(background) ? "当前：无" : "当前：" + Path.GetFileName(background),
                 UiKit.Row(
                     UiKit.Btn("选择文件…", () =>
@@ -124,6 +100,64 @@ public static class AppearancePage
                         host.RefreshCurrent();
                     })))));
         return col;
+    }
+
+    /// <summary>一套完整的"配色 / 材质 / 强度 / 透明度 / 圆角"设置行。</summary>
+    private static UIElement Section(string title, string prefix, Func<ThemeTokens> read, MainWindow host)
+    {
+        var tokens = read();
+        return UiKit.Section(title,
+            UiKit.ComboRow("🌗", "配色", "跟随系统 / 深色 / 浅色 / 纯黑 / 护眼", Schemes, tokens.Scheme.ToString(),
+                v => Save(prefix, read, tokens => tokens.Scheme = Enum.Parse<ColorScheme>(v), host, rebuild: true)),
+            UiKit.ComboRow("🪟", "材质", "亚克力最通透，纯色最省资源", Materials, tokens.Material.ToString(),
+                v => Save(prefix, read, t => t.Material = Enum.Parse<MaterialKind>(v), host)),
+            UiKit.SliderRow("💧", "材质强度", null, 0.1, 1.0, tokens.MaterialIntensity,
+                v => Save(prefix, read, t => t.MaterialIntensity = Math.Round(v, 2), host),
+                tokens.MaterialIntensity.ToString("0.00")),
+            UiKit.SliderRow("🌫", "默认透明度", null, 0.3, 1.0, tokens.Opacity,
+                v => Save(prefix, read, t => t.Opacity = Math.Round(v, 2), host),
+                tokens.Opacity.ToString("0.00")),
+            UiKit.SliderRow("⬜", "圆角", null, 0, 28, tokens.CornerRadius,
+                v => Save(prefix, read, t => t.CornerRadius = (int)Math.Round(v), host),
+                ((int)tokens.CornerRadius).ToString()));
+    }
+
+    /// <summary>把一次修改写进设置并立即生效（设计窗口要重建页面，收纳窗口只需刷新桌面层）。</summary>
+    private static void Save(string prefix, Func<ThemeTokens> read, Action<ThemeTokens> mutate, MainWindow host,
+        bool rebuild = false)
+    {
+        var tokens = read().Clone();
+        mutate(tokens);
+
+        AppServices.Settings.Set($"{prefix}.scheme", tokens.Scheme.ToString());
+        AppServices.Settings.Set($"{prefix}.material", tokens.Material.ToString());
+        AppServices.Settings.Set($"{prefix}.intensity", tokens.MaterialIntensity);
+        AppServices.Settings.Set($"{prefix}.opacity", tokens.Opacity);
+        AppServices.Settings.Set($"{prefix}.corner", tokens.CornerRadius);
+
+        if (prefix == "theme.shell") Theme.ApplyShell(tokens);
+        else Theme.ApplyDesktop(tokens);
+
+        (Application.Current as App)?.Desktop.ApplyLookToAll();
+        if (rebuild) host.RefreshCurrent();
+    }
+
+    private static void CopyTokens(string fromPrefix, string toPrefix, MainWindow host)
+    {
+        var source = fromPrefix == "theme.shell" ? Theme.Shell : Theme.Desktop;
+        var copy = source.Clone();
+        AppServices.Settings.Set($"{toPrefix}.scheme", copy.Scheme.ToString());
+        AppServices.Settings.Set($"{toPrefix}.material", copy.Material.ToString());
+        AppServices.Settings.Set($"{toPrefix}.intensity", copy.MaterialIntensity);
+        AppServices.Settings.Set($"{toPrefix}.opacity", copy.Opacity);
+        AppServices.Settings.Set($"{toPrefix}.corner", copy.CornerRadius);
+
+        if (toPrefix == "theme.shell") Theme.ApplyShell(copy);
+        else Theme.ApplyDesktop(copy);
+
+        (Application.Current as App)?.Desktop.ApplyLookToAll();
+        Ui.Notifications.Toast(toPrefix == "theme.shell" ? "已把收纳窗口的外观复制到设计窗口" : "已把设计窗口的外观复制到收纳窗口", 3);
+        host.RefreshCurrent();
     }
 }
 
@@ -168,7 +202,7 @@ public static class ModulesPage
                 AppServices.Settings.Get("search.saveHistory", true), v => AppServices.Settings.Set("search.saveHistory", v)),
             UiKit.InputRow("📁", "全盘索引范围", "留空＝所有固定磁盘；也可只写某几个盘，如 D:;E:",
                 AppServices.Settings.Get("search.roots", ""), v => AppServices.Settings.Set("search.roots", v), 240),
-            UiKit.Row("🔍", $"已收录 {AppServices.Search.IndexedCount} 条",
+            UiKit.Row("🔍", $"已收录 {AppServices.Search.IndexedCount:N0} 条",
                 AppServices.Search.IsIndexing ? "正在后台建立索引…" : "已就绪",
                 UiKit.Btn("重建索引", () =>
                 {
@@ -181,14 +215,12 @@ public static class ModulesPage
 
     private static IEnumerable<(string Id, string Title, string Glyph, string Subtitle)> ModuleCatalog()
     {
-        yield return (ModuleIds.ComfyUi, "AI 出图（本地 ComfyUI）", "🖼", "用你自己电脑上的 ComfyUI 出图，图片存本地");
         yield return (ModuleIds.Pet, "桌宠", "🐾", "工作伙伴：待办提醒、番茄钟、休息与系统状态联动、AI 问答");
         yield return (ModuleIds.UsageStats, "应用使用统计", "⏱", "类似 ManicTime，默认只记进程名，数据全在本机");
         yield return (ModuleIds.PerfMonitor, "性能监视面板", "📈", "CPU / 内存 / 网络 / GPU，可自选显示项与布局");
         yield return (ModuleIds.ApiPanel, "API 面板", "💰", "各模型余额、调用次数、成功率、平均延迟（Key 用 DPAPI 加密）");
         yield return (ModuleIds.PowerSchedule, "计划关机", "⏻", "定时 / 倒计时 / 空闲触发，执行前有提醒可取消");
         yield return (ModuleIds.AiBridge, "AI 接口（本地服务）", "🔗", "把盒内文件元数据、待办、随记、统计开放给本机 Codex / dsh / Claude");
-        yield return (ModuleIds.Capture, "截图 / 录屏 / GIF", "📸", "基础截图与录制，独立可选包");
     }
 
     private static void ApplySwitch(string id, bool enabled)
@@ -239,74 +271,39 @@ public static class PetPage
             })));
 
         col.Children.Add(UiKit.Section("行为（都可以单独关）",
-            UiKit.ToggleRow("✅", "待办到点举手提醒", "气泡里可以直接打勾完成", pet.TodoReminder, v =>
+            UiKit.ToggleRow("✅", "待办到点举手提醒", "气泡里可以直接打勾完成", pet.TodoReminder, v => { pet.TodoReminder = v; Save(pet); }),
+            UiKit.ToggleRow("👆", "点击有反应", null, pet.ClickReaction, v => { pet.ClickReaction = v; Save(pet); }),
+            UiKit.ToggleRow("📈", "跟随系统状态", "CPU 长时间很高时变累", pet.SystemReaction, v => { pet.SystemReaction = v; Save(pet); }),
+            UiKit.ToggleRow("😴", "空闲时打瞌睡", null, pet.IdleReaction, v => { pet.IdleReaction = v; Save(pet); }),
+            UiKit.ToggleRow("⌨", "打字陪伴", "默认关；只统计有按键这个事实，不记录任何字符、不联网", pet.KeyboardFollow, v =>
             {
-                pet.TodoReminder = v;
+                pet.KeyboardFollow = v;
                 Save(pet);
+                AppServices.ApplyPetSettings();
+                AppServices.AttachKeyboardFollow();
             }),
-            UiKit.ToggleRow("👆", "点击有反应", null, pet.ClickReaction, v =>
+            UiKit.ToggleRow("💬", "允许「问我一句」", "用你自己配置的 API Key，回答会结合你的待办", pet.AiAskEnabled, v =>
             {
-                pet.ClickReaction = v;
+                pet.AiAskEnabled = v;
                 Save(pet);
-            }),
-            UiKit.ToggleRow("📈", "跟随系统状态", "CPU 长时间很高时变累，并提示打开性能面板", pet.SystemReaction, v =>
-            {
-                pet.SystemReaction = v;
-                Save(pet);
-            }),
-            UiKit.ToggleRow("😴", "空闲时打瞌睡", null, pet.IdleReaction, v =>
-            {
-                pet.IdleReaction = v;
-                Save(pet);
-            }),
-            UiKit.ToggleRow("⌨", "打字陪伴", "默认关；只统计有按键这个事实，不记录任何字符、不联网",
-                pet.KeyboardFollow, v =>
-                {
-                    pet.KeyboardFollow = v;
-                    Save(pet);
-                    AppServices.ApplyPetSettings();
-                    AppServices.AttachKeyboardFollow();
-                }),
-            UiKit.ToggleRow("💬", "允许问我一句", "用你自己配置的 API Key，回答会结合你的待办",
-                pet.AiAskEnabled, v =>
-                {
-                    pet.AiAskEnabled = v;
-                    Save(pet);
-                })));
+            })));
 
         col.Children.Add(UiKit.Section("外观",
-            UiKit.SliderRow("📏", "尺寸", null, 0.6, 2.0, pet.Scale, v =>
-            {
-                pet.Scale = Math.Round(v, 2);
-                Save(pet);
-            }, pet.Scale.ToString("0.00")),
-            UiKit.SliderRow("🌫", "透明度", null, 0.3, 1.0, pet.Opacity, v =>
-            {
-                pet.Opacity = Math.Round(v, 2);
-                Save(pet);
-            }, pet.Opacity.ToString("0.00")),
+            UiKit.SliderRow("📏", "尺寸", null, 0.6, 2.0, pet.Scale, v => { pet.Scale = Math.Round(v, 2); Save(pet); }, null),
+            UiKit.SliderRow("🌫", "透明度", null, 0.3, 1.0, pet.Opacity, v => { pet.Opacity = Math.Round(v, 2); Save(pet); }, null),
             UiKit.ComboRow("🎞", "帧率上限", "越低越省电", new[] { "15", "30", "60" }, pet.FpsLimit.ToString(), v =>
             {
-                if (int.TryParse(v, out var fps))
-                {
-                    pet.FpsLimit = fps;
-                    Save(pet);
-                }
+                if (int.TryParse(v, out var fps)) { pet.FpsLimit = fps; Save(pet); }
             }),
             UiKit.ComboRow("📌", "层级", "总在最前 / 贴桌面层 / 空闲才出现",
-                new[] { "Always", "OnDesktop", "WhenIdle" }, pet.TopmostMode, v =>
-                {
-                    pet.TopmostMode = v;
-                    Save(pet);
-                })));
+                new[] { "Always", "OnDesktop", "WhenIdle" }, pet.TopmostMode, v => { pet.TopmostMode = v; Save(pet); })));
 
         var packRows = new List<UIElement>();
         PetPackStore.EnsureBuiltin();
         foreach (var pack in PetPackStore.Installed())
         {
             var captured = pack;
-            packRows.Add(UiKit.Row("🎭", captured.Name,
-                $"作者 {captured.Author} · 授权 {captured.License}",
+            packRows.Add(UiKit.Row("🎭", captured.Name, $"作者 {captured.Author} · 授权 {captured.License}",
                 UiKit.Row(
                     UiKit.Btn("使用", () =>
                     {

@@ -60,7 +60,7 @@ public sealed partial class WidgetWindow
             {
                 Text = todo.Title,
                 FontSize = 12.5,
-                Foreground = Theme.Current.ForegroundBrush,
+                Foreground = Theme.Desktop.ForegroundBrush,
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = Math.Max(80, Width - 90)
             };
@@ -106,12 +106,12 @@ public sealed partial class WidgetWindow
         {
             var border = new Border
             {
-                Background = Theme.Current.CardBrush,
+                Background = Theme.Desktop.CardBrush,
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(8),
                 Margin = new Thickness(0, 4, 0, 4),
                 BorderThickness = new Thickness(1),
-                BorderBrush = Theme.Current.BorderBrush
+                BorderBrush = Theme.Desktop.BorderBrush
             };
             var stack = new StackPanel();
             stack.Children.Add(UiKit.Text(note.Title, 12.5, bold: true));
@@ -124,7 +124,7 @@ public sealed partial class WidgetWindow
                 MinHeight = 50,
                 BorderThickness = new Thickness(0),
                 Background = Brushes.Transparent,
-                Foreground = Theme.Current.SecondaryBrush
+                Foreground = Theme.Desktop.SecondaryBrush
             };
             body.LostFocus += (_, _) =>
             {
@@ -174,7 +174,7 @@ public sealed partial class WidgetWindow
             Width = 320,
             Height = 150,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
-            Background = Theme.Current.BackgroundBrush,
+            Background = Theme.Desktop.BackgroundBrush,
             Content = UiKit.Card(null, UiKit.Col(UiKit.Text("城市名称（中文即可）", 11.5, secondary: true), input,
                 UiKit.Btn("保存并刷新", () => { }, true)))
         };
@@ -328,7 +328,7 @@ public sealed partial class WidgetWindow
                     Text = item.DisplayName,
                     FontSize = 12.5,
                     Margin = new Thickness(6, 0, 0, 0),
-                    Foreground = Theme.Current.ForegroundBrush,
+                    Foreground = Theme.Desktop.ForegroundBrush,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     MaxWidth = Math.Max(80, Width - 80)
                 });

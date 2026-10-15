@@ -157,8 +157,10 @@ public static partial class UiKit
         };
         track.Child = thumb;
         var isOn = value;
-        track.MouseLeftButtonUp += (_, _) =>
+        track.MouseLeftButtonUp += (_, e) =>
         {
+            // 必须把事件吃掉：否则点击开关会继续冒泡到整行（例如"可展开行"会同时展开/收起）
+            e.Handled = true;
             isOn = !isOn;
             track.Background = isOn ? Theme.Current.AccentBrush : HoverBrush();
             track.BorderBrush = isOn ? Theme.Current.AccentBrush : Theme.Current.BorderBrush;
@@ -179,10 +181,19 @@ public static partial class UiKit
         Action<double> onChanged, string? valueText = null)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        row.Children.Add(Slider(min, max, value, onChanged, 170));
-        if (valueText is not null)
+        // 数值必须**跟着滑杆实时变化**：之前传进来的是一段写死的文本，拖完看着没反应（真实体验 bug）
+        TextBlock? label = null;
+        if (valueText is not null) label = Text(valueText, Tokens.FontDescription, secondary: true);
+
+        var slider = Slider(min, max, value, v =>
         {
-            var label = Text(valueText, Tokens.FontDescription, secondary: true);
+            if (label is not null)
+                label.Text = min >= 0 && max <= 1.2 ? v.ToString("0.00") : ((int)Math.Round(v)).ToString();
+            onChanged(v);
+        }, 170);
+        row.Children.Add(slider);
+        if (label is not null)
+        {
             label.VerticalAlignment = VerticalAlignment.Center;
             label.MinWidth = 44;
             row.Children.Add(label);

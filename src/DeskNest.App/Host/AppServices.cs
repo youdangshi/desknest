@@ -54,16 +54,10 @@ public static class AppServices
         Modules = new ModuleHost(Settings, new ModuleContext());
         if (startBackgroundWork) Modules.Scan();
 
-        // 主题令牌从设置恢复
-        Ui.Theme.Apply(new Ui.ThemeTokens
-        {
-            Scheme = Enum.TryParse<Ui.ColorScheme>(Settings.Get("theme.scheme", "FollowSystem"), out var cs) ? cs : Ui.ColorScheme.FollowSystem,
-            Material = Enum.TryParse<Ui.MaterialKind>(Settings.Get("theme.material", "Acrylic"), out var mk) ? mk : Ui.MaterialKind.Acrylic,
-            MaterialIntensity = Settings.Get("theme.intensity", 0.65),
-            CornerRadius = Settings.Get("theme.corner", 12),
-            Opacity = Settings.Get("theme.opacity", 0.82),
-            ReduceMotion = Settings.Get("theme.reduceMotion", false)
-        });
+        // 主题令牌从设置恢复：设计窗口（主窗口/设置页）与收纳窗口（桌面盒/组件）**各自独立**。
+        // 旧版本只有一个 theme.* 键，作为两者的兜底默认值。
+        Ui.Theme.ApplyShell(ReadTokens("theme.shell"));
+        Ui.Theme.ApplyDesktop(ReadTokens("theme.desktop"));
 
         // 后台任务
         if (startBackgroundWork)
@@ -84,6 +78,26 @@ public static class AppServices
         if (!string.IsNullOrWhiteSpace(raw))
             return raw!.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
         return new List<string>();   // 空 = 所有固定磁盘
+    }
+
+    /// <summary>按前缀读取一套主题令牌；缺项时回落到旧的单一 theme.* 键，再回落到内置默认。</summary>
+    private static Ui.ThemeTokens ReadTokens(string prefix)
+    {
+        string Legacy(string key) => Settings.Get(key, "");
+        var scheme = Settings.Get($"{prefix}.scheme", Legacy("theme.scheme"));
+        if (string.IsNullOrWhiteSpace(scheme)) scheme = "FollowSystem";
+        var material = Settings.Get($"{prefix}.material", Legacy("theme.material"));
+        if (string.IsNullOrWhiteSpace(material)) material = "Acrylic";
+
+        return new Ui.ThemeTokens
+        {
+            Scheme = Enum.TryParse<Ui.ColorScheme>(scheme, out var cs) ? cs : Ui.ColorScheme.FollowSystem,
+            Material = Enum.TryParse<Ui.MaterialKind>(material, out var mk) ? mk : Ui.MaterialKind.Acrylic,
+            MaterialIntensity = Settings.Get($"{prefix}.intensity", Settings.Get("theme.intensity", 0.65)),
+            CornerRadius = Settings.Get($"{prefix}.corner", Settings.Get("theme.corner", 12)),
+            Opacity = Settings.Get($"{prefix}.opacity", Settings.Get("theme.opacity", 0.82)),
+            ReduceMotion = Settings.Get("theme.reduceMotion", false)
+        };
     }
 
     public static void ApplyPetSettings()

@@ -50,8 +50,13 @@ public static class DesktopLayer
         }
     }
 
-    /// <summary>把窗口挂到桌面层，并设置"不抢焦点、不进任务栏"的样式。</summary>
-    public static bool Attach(IntPtr hwnd)
+    /// <summary>
+    /// 把窗口挂到桌面层。
+    /// allowFocus=true：窗口可以正常被点击、聚焦（输入框/右键菜单/按钮才有反应）；
+    /// allowFocus=false：传统"不抢焦点"覆盖层（只展示、不交互）。
+    /// 两种情况下都只保留"不进任务栏"的样式，并且**显示时不抢焦点**。
+    /// </summary>
+    public static bool Attach(IntPtr hwnd, bool allowFocus = true)
     {
         try
         {
@@ -60,10 +65,14 @@ public static class DesktopLayer
             NativeMethods.SetParent(hwnd, workerW);
 
             var ex = NativeMethods.GetWindowLong(hwnd, GWL_EXSTYLE);
-            ex |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+            ex |= WS_EX_TOOLWINDOW;
+            if (allowFocus) ex &= ~WS_EX_NOACTIVATE;
+            else ex |= WS_EX_NOACTIVATE;
             NativeMethods.SetWindowLong(hwnd, GWL_EXSTYLE, ex);
             NativeMethods.SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
                 SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
+            // 显示时不激活：避免一开机就把焦点从别的程序抢过来
+            NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOWNOACTIVATE);
             return true;
         }
         catch (Exception ex)

@@ -55,7 +55,11 @@ public partial class App : Application
         _autoOrganizeTimer.Tick += (_, _) => AutoOrganizeTick();
         _autoOrganizeTimer.Start();
 
-        if (!AppServices.Settings.Get("onboarding.done", false)) ShowMain();
+        // 首次运行或用户没勾"静默启动"时，启动就把主窗口显示出来；
+        // 之前写死了"引导完成后永不显示"，与设置里的「静默启动」开关自相矛盾（用户会以为程序没启动）。
+        var onboardingDone = AppServices.Settings.Get("onboarding.done", false);
+        var silentStart = AppServices.Settings.Get("app.silentStart", false);
+        if (!onboardingDone || !silentStart) ShowMain();
         else Ui.Notifications.Toast("桌巢已在后台运行：Alt+Space 搜索，Alt+` 显示/隐藏桌面");
     }
 

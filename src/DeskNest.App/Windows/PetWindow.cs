@@ -53,7 +53,7 @@ public sealed class PetWindow : Window
             Width = 96,
             Height = 88,
             Fill = new SolidColorBrush(Color.FromRgb(0x7C, 0xA8, 0xF0)),
-            Stroke = Theme.Current.BorderBrush,
+            Stroke = Theme.Desktop.BorderBrush,
             StrokeThickness = 1
         };
         Canvas.SetLeft(_body, 34);
@@ -72,8 +72,8 @@ public sealed class PetWindow : Window
         _bubbleActions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
         _bubble = new Border
         {
-            Background = Theme.Current.CardBrush,
-            BorderBrush = Theme.Current.BorderBrush,
+            Background = Theme.Desktop.CardBrush,
+            BorderBrush = Theme.Desktop.BorderBrush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(10, 8, 10, 8),
@@ -360,7 +360,7 @@ public sealed class PetWindow : Window
                 Width = 320,
                 Height = 170,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                Background = Theme.Current.BackgroundBrush,
+                Background = Theme.Desktop.BackgroundBrush,
                 Content = UiKit.Card(null, UiKit.Col(
                     UiKit.Text("它会结合你的待办一起回答", 11.5, secondary: true), ask, askBtn))
             };
@@ -371,7 +371,7 @@ public sealed class PetWindow : Window
                 Width = 420,
                 Height = 260,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                Background = Theme.Current.BackgroundBrush,
+                Background = Theme.Desktop.BackgroundBrush,
                 Content = UiKit.Card(null, UiKit.Scroll(answerText))
             };
             askBtn.Click += async (_, _) =>

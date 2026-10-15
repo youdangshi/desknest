@@ -82,26 +82,49 @@ public sealed class ThemeTokens
 
 public static class Theme
 {
-    public static ThemeTokens Current { get; private set; } = new();
+    /// <summary>设计窗口（主窗口与设置页）的令牌。</summary>
+    public static ThemeTokens Shell { get; private set; } = new();
+
+    /// <summary>收纳窗口（桌面盒 / 组件 / 桌宠）的令牌。与设计窗口互不影响，各自独立设置。</summary>
+    public static ThemeTokens Desktop { get; private set; } = new();
+
+    /// <summary>兼容旧调用：等同于设计窗口令牌（设置页、通知、搜索面板都用它）。</summary>
+    public static ThemeTokens Current => Shell;
+
     public static event Action? Changed;
 
-    public static void Apply(ThemeTokens tokens)
+    public static void Apply(ThemeTokens tokens) => ApplyShell(tokens);
+
+    public static void ApplyShell(ThemeTokens tokens)
     {
-        Current = tokens;
+        Shell = tokens;
+        Changed?.Invoke();
+    }
+
+    public static void ApplyDesktop(ThemeTokens tokens)
+    {
+        Desktop = tokens;
         Changed?.Invoke();
     }
 
     /// <summary>把当前令牌应用到窗口外壳（背景/前景）。运行时换主题必须调用，否则只剩页面内容变色。</summary>
     public static void ApplyToShell(System.Windows.Window window)
     {
-        window.Background = Current.BackgroundBrush;
-        window.Foreground = Current.ForegroundBrush;
+        window.Background = Shell.BackgroundBrush;
+        window.Foreground = Shell.ForegroundBrush;
     }
 
-    /// <summary>把"全局令牌 + 单窗口覆盖"合成最终令牌。</summary>
+    /// <summary>把"设计窗口令牌 + 单对象覆盖"合成最终令牌。</summary>
     public static ThemeTokens Resolve(string? material, double? intensity, double? opacity, int? corner, bool inherit)
+        => ResolveFrom(Shell, material, intensity, opacity, corner, inherit);
+
+    /// <summary>把"收纳窗口令牌 + 单对象覆盖"合成最终令牌（桌面盒 / 组件用）。</summary>
+    public static ThemeTokens ResolveDesktop(string? material, double? intensity, double? opacity, int? corner, bool inherit)
+        => ResolveFrom(Desktop, material, intensity, opacity, corner, inherit);
+
+    private static ThemeTokens ResolveFrom(ThemeTokens basis, string? material, double? intensity, double? opacity, int? corner, bool inherit)
     {
-        var t = Current.Clone();
+        var t = basis.Clone();
         if (inherit) return t;
         if (!string.IsNullOrEmpty(material) && Enum.TryParse<MaterialKind>(material, out var m)) t.Material = m;
         if (intensity is { } i) t.MaterialIntensity = i;

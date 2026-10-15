@@ -156,8 +156,8 @@ public sealed partial class BoxWindow
                 FontSize = 11.5,
                 Padding = new Thickness(8, 2, 8, 2),
                 Margin = new Thickness(2, 2, 2, 0),
-                Background = active ? Theme.Current.AccentBrush : Brushes.Transparent,
-                Foreground = active ? Brushes.White : Theme.Current.SecondaryBrush,
+                Background = active ? Theme.Desktop.AccentBrush : Brushes.Transparent,
+                Foreground = active ? Brushes.White : Theme.Desktop.SecondaryBrush,
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand
             };

@@ -27,6 +27,8 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+    internal const int SW_SHOWNOACTIVATE = 4;
+
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam,
         uint flags, uint timeout, out IntPtr result);

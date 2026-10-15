@@ -30,7 +30,7 @@ public sealed partial class WidgetWindow : Window
         AllowsTransparency = true;
         Background = Brushes.Transparent;
         ShowInTaskbar = false;
-        ResizeMode = ResizeMode.CanResizeWithGrip;
+        ResizeMode = ResizeMode.NoResize;   // 同上：缩放交给 WindowDrag 的手柄
         Width = widget.Width;
         Height = widget.Height;
         Left = widget.X;
@@ -44,14 +44,14 @@ public sealed partial class WidgetWindow : Window
             Text = "▢",
             FontSize = 11,
             Margin = new Thickness(8, 5, 6, 0),
-            Foreground = Theme.Current.SecondaryBrush
+            Foreground = Theme.Desktop.SecondaryBrush
         });
         title.Children.Add(new TextBlock
         {
             Text = string.IsNullOrEmpty(widget.Name) ? KindName(widget.Kind) : widget.Name,
             FontSize = 12.5,
             FontWeight = FontWeights.SemiBold,
-            Foreground = Theme.Current.ForegroundBrush,
+            Foreground = Theme.Desktop.ForegroundBrush,
             Margin = new Thickness(0, 4, 0, 0)
         });
         var spacer = new Border { Width = 8 };
@@ -64,7 +64,7 @@ public sealed partial class WidgetWindow : Window
             AppServices.Repo.Upsert(_widget);
             Hide();
         }));
-        title.MouseLeftButtonDown += (_, _) => DragMove();
+        WindowDrag.EnableMove(this, title, () => false, Persist);
 
         var dock = new DockPanel();
         DockPanel.SetDock(title, Dock.Top);
@@ -84,11 +84,11 @@ public sealed partial class WidgetWindow : Window
         {
             CornerRadius = new CornerRadius(widget.CornerRadius),
             BorderThickness = new Thickness(1),
-            BorderBrush = Theme.Current.BorderBrush,
+            BorderBrush = Theme.Desktop.BorderBrush,
             Effect = UiKit.SoftShadow(),
             Child = dock
         };
-        Content = _root;
+        Content = WindowDrag.WrapWithResizeGrips(_root, this, () => false, MinWidth, MinHeight, Persist);
 
         LocationChanged += (_, _) => Persist();
         SizeChanged += (_, _) => Persist();
@@ -133,7 +133,7 @@ public sealed partial class WidgetWindow : Window
             Margin = new Thickness(2, 3, 0, 0),
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            Foreground = Theme.Current.SecondaryBrush,
+            Foreground = Theme.Desktop.SecondaryBrush,
             Cursor = Cursors.Hand
         };
         b.Click += (_, e) => { action(); e.Handled = true; };
@@ -142,7 +142,7 @@ public sealed partial class WidgetWindow : Window
 
     public void ApplyLook()
     {
-        var t = Theme.Resolve(_widget.Material, _widget.MaterialIntensity, _widget.Opacity,
+        var t = Theme.ResolveDesktop(_widget.Material, _widget.MaterialIntensity, _widget.Opacity,
             _widget.CornerRadius, _widget.StyleScope == StyleScope.Inherit);
         _root.CornerRadius = new CornerRadius(t.CornerRadius);
         var bg = t.Background;
