@@ -38,13 +38,14 @@
          不是要把它做成软件功能）。需要时把下面这行取消注释即可让它出现在「模块」与左侧导航里。 -->
     <!-- <ProjectReference Include="..\DeskNest.Module.ComfyUI\DeskNest.Module.ComfyUI.csproj" ReferenceOutputAssembly="false" /> -->
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
   <!-- 把可选模块 dll 拷到输出 / 发布目录的 modules\ 下：没放进去的模块就等于"未安装" -->
   <Target Name="CopyModules" AfterTargets="Build">
     <ItemGroup>
-      <ModuleDllsRid Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\$(RuntimeIdentifier)\DeskNest.Module.*.dll"
-                     Exclude="$(MSBuildThisFileDirectory)..\DeskNest.Module.ComfyUI\bin\**" />
-      <ModuleDllsPlain Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\DeskNest.Module.*.dll"
-                       Exclude="$(MSBuildThisFileDirectory)..\DeskNest.Module.ComfyUI\bin\**" />
+      <ModuleDllsRid Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\$(RuntimeIdentifier)\DeskNest.Module.*.dll" Exclude="$(MSBuildThisFileDirectory)..\DeskNest.Module.ComfyUI\bin\**" />
+      <ModuleDllsPlain Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\DeskNest.Module.*.dll" Exclude="$(MSBuildThisFileDirectory)..\DeskNest.Module.ComfyUI\bin\**" />
       <ModuleDlls Include="@(ModuleDllsRid)" Condition="'@(ModuleDllsRid)' != ''" />
       <ModuleDlls Include="@(ModuleDllsPlain)" Condition="'@(ModuleDllsRid)' == ''" />
     </ItemGroup>
@@ -52,14 +53,12 @@
   </Target>
   <Target Name="CopyModulesToPublish" AfterTargets="Publish">
     <ItemGroup>
-      <ModuleDllsRidPub Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\$(RuntimeIdentifier)\DeskNest.Module.*.dll"
-                        Exclude="$(MSBuildThisFileDirectory)..\DeskNest.Module.ComfyUI\bin\**" />
-      <ModuleDllsPlainPub Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\DeskNest.Module.*.dll"
-                          Exclude="$(MSBuildThisFileDirectory)..\DeskNest.Module.ComfyUI\bin\**" />
+      <ModuleDllsRidPub Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\$(RuntimeIdentifier)\DeskNest.Module.*.dll" Exclude="$(MSBuildThisFileDirectory)..\DeskNest.Module.ComfyUI\bin\**" />
+      <ModuleDllsPlainPub Include="$(MSBuildThisFileDirectory)..\DeskNest.Module.*\bin\$(Configuration)\net10.0-windows\DeskNest.Module.*.dll" Exclude="$(MSBuildThisFileDirectory)..\DeskNest.Module.ComfyUI\bin\**" />
       <ModuleDllsPub Include="@(ModuleDllsRidPub)" Condition="'@(ModuleDllsRidPub)' != ''" />
       <ModuleDllsPub Include="@(ModuleDllsPlainPub)" Condition="'@(ModuleDllsRidPub)' == ''" />
     </ItemGroup>
     <Copy SourceFiles="@(ModuleDllsPub)" DestinationFolder="$(PublishDir)modules" SkipUnchangedFiles="true" />
-    <Message Importance="high" Text="已复制 @(ModuleDllsPub->Count()) 个可选模块到 $(PublishDir)modules" />
+    <Message Importance="high" Text="已复制 @(ModuleDllsPub-&gt;Count()) 个可选模块到 $(PublishDir)modules" />
   </Target>
 </Project>

@@ -3,6 +3,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
+using WpfButton = Wpf.Ui.Controls.Button;
+using WpfTextBox = Wpf.Ui.Controls.TextBox;
+using Wpf.Ui.Controls;
+using TextBlock = System.Windows.Controls.TextBlock;
+using Button = System.Windows.Controls.Button;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace DeskNest.App.Ui;
 
@@ -55,13 +61,12 @@ public static partial class UiKit
 
     public static Button Btn(string text, Action onClick, bool primary = false)
     {
-        var b = new Button
+        var b = new WpfButton
         {
             Content = text,
             Margin = new Thickness(0, 0, Tokens.Space8, 0),
-            FontFamily = new FontFamily(Tokens.UiFontFamily)
+            Appearance = primary ? ControlAppearance.Primary : ControlAppearance.Secondary
         };
-        b.Style = primary ? ControlStyles.AccentButton() : ControlStyles.Button();
         b.Click += (_, _) => onClick();
         return b;
     }
@@ -141,26 +146,25 @@ public static partial class UiKit
 
     public static TextBox Input(string text, Action<string> onChanged, double width = 200, bool multiline = false)
     {
-        var tb = new TextBox
+        var tb = new WpfTextBox
         {
             Text = text,
             Width = width,
-            FontFamily = new FontFamily(Tokens.UiFontFamily),
             Margin = new Thickness(0, Tokens.Space4, Tokens.Space8, Tokens.Space4),
             AcceptsReturn = multiline,
             TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
             MinHeight = multiline ? 64 : 32
         };
-        tb.Style = ControlStyles.TextBoxStyle();
         tb.TextChanged += (_, _) => onChanged(tb.Text);
         return tb;
     }
 
-    /// <summary>带占位提示的输入框（占位文本走模板里的 Tag）。</summary>
+    /// <summary>带占位提示的输入框（用 WPF-UI TextBox 自带的 PlaceholderText）。</summary>
     public static TextBox InputWithPlaceholder(string placeholder, Action<string> onChanged, double width = 200)
     {
-        var tb = Input("", onChanged, width);
-        tb.Tag = placeholder;
+        var tb = (WpfTextBox)Input("", onChanged, width);
+        tb.PlaceholderText = placeholder;
+        tb.ClearButtonEnabled = true;
         return tb;
     }
 

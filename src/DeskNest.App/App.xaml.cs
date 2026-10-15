@@ -123,11 +123,22 @@ public partial class App : Application
 
     public void ShowMain(string? page = null)
     {
-        _mainWindow ??= new MainWindow();
-        if (page is not null) _mainWindow.NavigateTo(page);
-        _mainWindow.Show();
-        if (_mainWindow.WindowState == WindowState.Minimized) _mainWindow.WindowState = WindowState.Normal;
-        _mainWindow.Activate();
+        try
+        {
+            Log.Info($"ShowMain 开始（page={page ?? "-"}，已有窗口={_mainWindow is not null}）");
+            _mainWindow ??= new MainWindow();
+            Log.Info("MainWindow 已创建");
+            if (page is not null) _mainWindow.NavigateTo(page);
+            _mainWindow.Show();
+            Log.Info($"MainWindow.Show 完成（IsVisible={_mainWindow.IsVisible}，句柄={new System.Windows.Interop.WindowInteropHelper(_mainWindow).Handle}）");
+            if (_mainWindow.WindowState == WindowState.Minimized) _mainWindow.WindowState = WindowState.Normal;
+            _mainWindow.Activate();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("打开主窗口失败：" + ex);
+            Ui.Notifications.Toast("打开主窗口失败：" + ex.Message, 8);
+        }
     }
 
     public void ShowOrganizeWizard()

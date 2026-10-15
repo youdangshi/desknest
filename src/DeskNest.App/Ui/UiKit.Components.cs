@@ -2,6 +2,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using Wpf.Ui.Controls;
+using WpfButton = Wpf.Ui.Controls.Button;
+using TextBlock = System.Windows.Controls.TextBlock;
+using Button = System.Windows.Controls.Button;
 
 namespace DeskNest.App.Ui;
 
@@ -16,51 +20,22 @@ public enum BannerKind { Info, Warning, Success }
 /// </summary>
 public static partial class UiKit
 {
-    /// <summary>信息条：图标 + 文字，圆角 6，浅色底，不是对话框。</summary>
-    public static Border Banner(BannerKind kind, string text, string? title = null)
+    /// <summary>信息条：改用 WPF-UI 的 InfoBar（自带图标、配色、圆角，跟随主题）。</summary>
+    public static UIElement Banner(BannerKind kind, string text, string? title = null)
     {
-        var (bg, fg, icon) = kind switch
+        return new InfoBar
         {
-            BannerKind.Warning => (Color.FromRgb(0xFF, 0xF4, 0xCE), Color.FromRgb(0x8A, 0x61, 0x00), "warning"),
-            BannerKind.Success => (Color.FromRgb(0xE7, 0xF6, 0xE9), Color.FromRgb(0x1F, 0x6B, 0x2E), "checkmark_circle"),
-            _ => (Color.FromRgb(0xE9, 0xF2, 0xFD), Color.FromRgb(0x10, 0x4A, 0x87), "info")
-        };
-
-        var stack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
-        var glyph = Icons.Vector(icon, 16, fg);
-        glyph.VerticalAlignment = VerticalAlignment.Top;
-        glyph.Margin = new Thickness(0, 1, Tokens.Space12, 0);
-        stack.Children.Add(glyph);
-
-        var textStack = new StackPanel();
-        if (!string.IsNullOrWhiteSpace(title))
-        {
-            textStack.Children.Add(new TextBlock
+            Severity = kind switch
             {
-                Text = title,
-                FontSize = Tokens.FontBody,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(fg),
-                TextWrapping = TextWrapping.Wrap
-            });
-        }
-        textStack.Children.Add(new TextBlock
-        {
-            Text = text,
-            FontSize = Tokens.FontDescription,
-            Foreground = new SolidColorBrush(fg),
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, string.IsNullOrWhiteSpace(title) ? 0 : Tokens.Space2, 0, 0)
-        });
-        stack.Children.Add(textStack);
-
-        return new Border
-        {
-            Background = new SolidColorBrush(bg),
-            CornerRadius = new CornerRadius(Tokens.CornerControl),
-            Padding = new Thickness(Tokens.Space12, Tokens.Space8, Tokens.Space12, Tokens.Space8),
-            Margin = new Thickness(Tokens.RowPaddingH, Tokens.Space4, Tokens.RowPaddingH, Tokens.Space8),
-            Child = stack
+                BannerKind.Warning => InfoBarSeverity.Warning,
+                BannerKind.Success => InfoBarSeverity.Success,
+                _ => InfoBarSeverity.Informational
+            },
+            Title = title ?? "",
+            Message = text,
+            IsOpen = true,
+            IsClosable = false,
+            Margin = new Thickness(0, 0, 0, Tokens.Space8)
         };
     }
 
@@ -76,7 +51,7 @@ public static partial class UiKit
         });
         if (!string.IsNullOrWhiteSpace(help))
         {
-            var q = Icons.Vector("question_circle", 14, Theme.Current.TertiaryColor);
+        var q = new SymbolIcon { Symbol = SymbolRegular.QuestionCircle24, FontSize = 14, Opacity = 0.7 };
             q.Margin = new Thickness(Tokens.Space6, 0, 0, 0);
             q.ToolTip = help;
             panel.Children.Add(q);
@@ -88,12 +63,12 @@ public static partial class UiKit
     /// 可展开行：标题 + 右侧控件（可选）+ 折叠箭头；展开后显示 childRows。
     /// 用于"开机自动启动 → 静默启动""全局快捷键 → 子项"这种层级。
     /// </summary>
-    public static Border ExpanderRow(string glyph, string title, string? subtitle, UIElement? rightControl,
+    public static UIElement ExpanderRow(string glyph, string title, string? subtitle, UIElement? rightControl,
         params UIElement[] childRows)
     {
         var host = new StackPanel();
 
-        var chevron = Icons.Vector("arrow_download", 12, Theme.Current.SecondaryColor);
+        var chevron = new SymbolIcon { Symbol = SymbolRegular.ChevronDown24, FontSize = 12, Opacity = 0.7 };
         chevron.RenderTransformOrigin = new Point(0.5, 0.5);
         chevron.RenderTransform = new RotateTransform(0);
 
@@ -118,7 +93,7 @@ public static partial class UiKit
 
         host.Children.Add(header);
         host.Children.Add(childrenHost);
-        return new Border { Child = host };
+        return host;
     }
 
     /// <summary>面包屑：返回箭头 + "常规 › 性能与资源"。</summary>
@@ -161,13 +136,4 @@ public static partial class UiKit
         return panel;
     }
 
-    /// <summary>导航分组标题（DeskBox 左侧那种分区标签）。</summary>
-    public static TextBlock NavGroup(string label, double topMargin = 14)
-        => new()
-        {
-            Text = label,
-            FontSize = Tokens.FontSmall,
-            Foreground = Theme.Current.TertiaryBrush,
-            Margin = new Thickness(Tokens.Space16, topMargin, Tokens.Space4, Tokens.Space4)
-        };
 }

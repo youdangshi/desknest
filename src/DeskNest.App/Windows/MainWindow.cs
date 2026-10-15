@@ -7,6 +7,10 @@ using DeskNest.App.Pages;
 using DeskNest.App.Ui;
 using DeskNest.Core;
 using DeskNest.Core.Modules;
+using Wpf.Ui.Controls;
+using TextBlock = System.Windows.Controls.TextBlock;
+using Button = System.Windows.Controls.Button;
+using Border = System.Windows.Controls.Border;
 
 namespace DeskNest.App.Windows;
 
@@ -14,7 +18,7 @@ namespace DeskNest.App.Windows;
 /// 主窗口（管理台）：左侧图标导航 + 顶部搜索 + 右侧卡片式设置页。
 /// 观感参考 DeskBox 的设置页：每行 = 图标 + 标题 + 说明 + 右侧控件，留白充足。
 /// </summary>
-public sealed class MainWindow : Window
+public sealed class MainWindow : FluentWindow
 {
     private readonly StackPanel _nav;
     private readonly Border _contentHost;
@@ -32,6 +36,7 @@ public sealed class MainWindow : Window
 
     public MainWindow()
     {
+        Log.Info("MainWindow 构造开始");
         Title = "桌巢 DeskNest";
         Icon = AppIcon.WindowIcon;
         Width = 1080;
@@ -41,6 +46,11 @@ public sealed class MainWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = Theme.Current.BackgroundBrush;
         Foreground = Theme.Current.ForegroundBrush;
+
+        // WPF-UI：Fluent 主题 + Mica/亚克力背景 + 系统级标题栏（观感对齐 DeskBox）
+        FluentTheme.Apply(Theme.Shell.Scheme, Theme.Shell.Material);
+        WindowBackdropType = FluentTheme.BackdropFor(Theme.Shell.Material);
+        ExtendsContentIntoTitleBar = true;
 
         RegisterPages();
 
@@ -72,16 +82,31 @@ public sealed class MainWindow : Window
         right.Children.Add(topBar);
         right.Children.Add(_contentHost);
 
+        // FluentWindow 开了 ExtendsContentIntoTitleBar 之后，标题栏由我们自己放进布局里
+        var titleBar = new Wpf.Ui.Controls.TitleBar
+        {
+            Title = "桌巢 DeskNest",
+            ShowMinimize = true,
+            ShowMaximize = true,
+            ShowClose = true,
+            CanMaximize = true
+        };
+        var shell = new DockPanel();
+        DockPanel.SetDock(titleBar, Dock.Top);
+        shell.Children.Add(titleBar);
+        shell.Children.Add(root);
+
         Grid.SetColumn(navRoot, 0);
         Grid.SetColumn(divider, 0);
         Grid.SetColumn(right, 1);
         root.Children.Add(navRoot);
         root.Children.Add(divider);
         root.Children.Add(right);
-        Content = root;
+        Content = shell;
 
         BuildNav();
         NavigateTo("overview");
+        Log.Info("MainWindow 构造完成");
 
         // 运行时切换主题：外壳与当前页必须一起重画（v1.0.0 只重画了页面内容，才出现"深底深字"）
         Theme.Changed += OnThemeChanged;
@@ -299,7 +324,11 @@ public sealed class MainWindow : Window
     {
         try
         {
-            Theme.ApplyToShell(this);
+            FluentTheme.Apply(Theme.Shell.Scheme, Theme.Shell.Material);
+            WindowBackdropType = FluentTheme.BackdropFor(Theme.Shell.Material);
+            // 用 Mica/亚克力时不要把窗口刷成不透明色，否则会把材质盖住
+            if (!AppServices.Settings.Get("theme.forceOpaqueShell", false)) Background = System.Windows.Media.Brushes.Transparent;
+            Foreground = Theme.Shell.ForegroundBrush;
             BuildNav();
             NavigateTo(_current);
         }

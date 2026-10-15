@@ -2,186 +2,110 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Shapes;
+using Wpf.Ui.Controls;
+using WpfButton = Wpf.Ui.Controls.Button;
+using WpfTextBlock = Wpf.Ui.Controls.TextBlock;
+using TextBlock = System.Windows.Controls.TextBlock;
 
 namespace DeskNest.App.Ui;
 
 /// <summary>
-/// 设置界面的"行式"零件，度量对齐开源 DeskBox 的 SettingsOverviewResources.xaml：
-/// 卡片圆角 6、行最小高度 64、行内边距 16/10、图标与文字间距 20；
-/// 页面标题 28 SemiBold、设置项标题 14、说明 12。
-/// 图标一律走 Icons（单色矢量字体），不再混用彩色 emoji。
+/// 设置界面的"行式"组件，改用 WPF-UI（lepoco，MIT）的原生 Fluent 控件实现：
+///  - 每行 = <see cref="CardControl"/>（左：图标 + 标题 + 说明；右：控件）
+///  - 开关 = <see cref="ToggleSwitch"/>；输入 = WPF-UI 的 TextBox（自带占位提示与清除按钮）
+///  - 提示条 = <see cref="InfoBar"/>；导航项 = <see cref="NavigationViewItem"/>（含分组头）
+/// 度量仍沿用我们定的令牌（行高 64 / 圆角 6 / 内容列 840 等）。
 /// </summary>
 public static partial class UiKit
 {
-    /// <summary>一组设置行（圆角卡片 + 行间分隔线）。</summary>
-    public static Border Section(string? title, params UIElement[] rows)
+    /// <summary>一组设置行：可选分组标题 + 若干卡片（每张卡片自带 Fluent 圆角与描边）。</summary>
+    public static UIElement Section(string? title, params UIElement[] rows)
     {
-        var panel = new StackPanel();
-        for (var i = 0; i < rows.Length; i++)
-        {
-            panel.Children.Add(rows[i]);
-            if (i < rows.Length - 1)
-            {
-                panel.Children.Add(new Border
-                {
-                    Height = 1,
-                    Background = Theme.Current.BorderBrush,
-                    Margin = new Thickness(Tokens.RowPaddingH + Tokens.IconSize + Tokens.IconTextGap, 0, Tokens.RowPaddingH, 0)
-                });
-            }
-        }
-
-        var stack = new StackPanel();
+        var stack = new StackPanel { Margin = new Thickness(0, 0, 0, Tokens.Space16) };
         if (!string.IsNullOrWhiteSpace(title))
         {
-            stack.Children.Add(new TextBlock
+            stack.Children.Add(new WpfTextBlock
             {
                 Text = title,
                 FontSize = Tokens.FontSubsectionTitle,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = Theme.Current.ForegroundBrush,
-                Margin = new Thickness(Tokens.Space4, 0, Tokens.Space4, Tokens.Space6)
+                Margin = new Thickness(Tokens.Space2, 0, 0, Tokens.Space8)
             });
         }
-        stack.Children.Add(new Border
+        foreach (var row in rows)
         {
-            Background = Theme.Current.CardBrush,
-            CornerRadius = new CornerRadius(Tokens.CornerCard),
-            BorderThickness = new Thickness(1),
-            BorderBrush = Theme.Current.BorderBrush,
-            Padding = Tokens.CardPadding,
-            Child = panel
-        });
-        stack.Margin = new Thickness(0, 0, 0, Tokens.Space16);
-        return new Border { Child = stack };
+            if (row is FrameworkElement element) element.Margin = new Thickness(0, 0, 0, Tokens.Space4);
+            stack.Children.Add(row);
+        }
+        return stack;
     }
 
-    /// <summary>一行设置：左侧单色图标 + 标题/说明，右侧控件。</summary>
-    public static Border Row(string glyph, string title, string? subtitle, UIElement? control, Action? onClick = null)
+    /// <summary>一行设置（Fluent 卡片）：左侧图标 + 标题 + 说明，右侧放控件。</summary>
+    public static UIElement Row(string glyph, string title, string? subtitle, UIElement? control, Action? onClick = null)
     {
-        var grid = new Grid { MinHeight = Tokens.RowMinHeight };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Tokens.RowPaddingH) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Tokens.IconSize) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Tokens.IconTextGap) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Tokens.RowPaddingH) });
-
-        var icon = Icons.VectorFromKey(glyph, Tokens.IconSize);
-        icon.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(icon, 1);
-
-        var text = new StackPanel
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, Tokens.RowPaddingV, Tokens.Space8, Tokens.RowPaddingV)
-        };
-        text.Children.Add(new TextBlock
+        var header = new StackPanel { Margin = new Thickness(0, Tokens.Space4, 0, Tokens.Space4) };
+        header.Children.Add(new WpfTextBlock
         {
             Text = title,
             FontSize = Tokens.FontSettingTitle,
-            Foreground = Theme.Current.ForegroundBrush,
-            TextTrimming = TextTrimming.CharacterEllipsis
+            TextWrapping = TextWrapping.Wrap
         });
         if (!string.IsNullOrWhiteSpace(subtitle))
         {
-            text.Children.Add(new TextBlock
+            header.Children.Add(new WpfTextBlock
             {
                 Text = subtitle,
                 FontSize = Tokens.FontDescription,
-                Foreground = Theme.Current.SecondaryBrush,
+                Opacity = 0.72,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, Tokens.Space2, 0, 0)
             });
         }
-        Grid.SetColumn(text, 3);
+
+        var card = new CardControl
+        {
+            Header = header,
+            Icon = new SymbolIcon { Symbol = Icons.SymbolFor(glyph), FontSize = Tokens.IconSize },
+            CornerRadius = new CornerRadius(Tokens.CornerCard),
+            Margin = new Thickness(0, 0, 0, Tokens.Space4)
+        };
 
         if (control is not null)
         {
             if (control is FrameworkElement element) element.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(control, 4);
+            card.Content = control;
         }
-
-        grid.Children.Add(icon);
-        grid.Children.Add(text);
-        if (control is not null) grid.Children.Add(control);
-
-        var border = new Border
-        {
-            CornerRadius = new CornerRadius(Tokens.CornerSmall),
-            Background = Brushes.Transparent,
-            Child = grid
-        };
         if (onClick is not null)
         {
-            border.Cursor = Cursors.Hand;
-            border.MouseEnter += (_, _) => border.Background = HoverBrush();
-            border.MouseLeave += (_, _) => border.Background = Brushes.Transparent;
-            border.MouseLeftButtonUp += (_, _) => onClick();
+            card.Cursor = Cursors.Hand;
+            card.Click += (_, _) => onClick();
         }
-        return border;
+        return card;
     }
 
-    /// <summary>悬停/选中用的淡底（跟随前景色做低透明度叠加，深浅色都不会脏）。</summary>
-    public static SolidColorBrush HoverBrush()
+    /// <summary>Fluent 开关。</summary>
+    public static UIElement Toggle(bool value, Action<bool> onChanged)
     {
-        var c = Theme.Current.Foreground;
-        return new SolidColorBrush(Color.FromArgb(Theme.Current.IsDark ? (byte)20 : (byte)12, c.R, c.G, c.B));
-    }
-
-    /// <summary>开关（Fluent 尺寸 40×20，圆点 14）：点击即时生效。</summary>
-    public static Border Toggle(bool value, Action<bool> onChanged)
-    {
-        var thumbOffset = Tokens.ToggleWidth - Tokens.ToggleThumb - 6;
-        var track = new Border
+        var toggle = new ToggleSwitch
         {
-            Width = Tokens.ToggleWidth,
-            Height = Tokens.ToggleHeight,
-            CornerRadius = new CornerRadius(Tokens.ToggleHeight / 2),
-            Background = value ? Theme.Current.AccentBrush : HoverBrush(),
-            BorderThickness = new Thickness(1),
-            BorderBrush = value ? Theme.Current.AccentBrush : Theme.Current.BorderBrush,
-            Cursor = Cursors.Hand,
+            IsChecked = value,
             VerticalAlignment = VerticalAlignment.Center
         };
-        var thumb = new Ellipse
-        {
-            Width = Tokens.ToggleThumb,
-            Height = Tokens.ToggleThumb,
-            Fill = value ? Brushes.White : Theme.Current.SecondaryBrush,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(3, 0, 0, 0),
-            RenderTransform = new TranslateTransform(value ? thumbOffset : 0, 0)
-        };
-        track.Child = thumb;
-        var isOn = value;
-        track.MouseLeftButtonUp += (_, e) =>
-        {
-            // 必须把事件吃掉：否则点击开关会继续冒泡到整行（例如"可展开行"会同时展开/收起）
-            e.Handled = true;
-            isOn = !isOn;
-            track.Background = isOn ? Theme.Current.AccentBrush : HoverBrush();
-            track.BorderBrush = isOn ? Theme.Current.AccentBrush : Theme.Current.BorderBrush;
-            thumb.Fill = isOn ? Brushes.White : Theme.Current.SecondaryBrush;
-            thumb.RenderTransform = new TranslateTransform(isOn ? thumbOffset : 0, 0);
-            onChanged(isOn);
-        };
-        return track;
+        toggle.Checked += (_, _) => onChanged(true);
+        toggle.Unchecked += (_, _) => onChanged(false);
+        return toggle;
     }
 
-    public static Border ToggleRow(string glyph, string title, string? subtitle, bool value, Action<bool> onChanged)
+    public static UIElement ToggleRow(string glyph, string title, string? subtitle, bool value, Action<bool> onChanged)
         => Row(glyph, title, subtitle, Toggle(value, onChanged));
 
-    public static Border ComboRow(string glyph, string title, string? subtitle, IEnumerable<string> items, string selected, Action<string> onChanged)
+    public static UIElement ComboRow(string glyph, string title, string? subtitle, IEnumerable<string> items, string selected, Action<string> onChanged)
         => Row(glyph, title, subtitle, Combo(items, selected, onChanged, 150));
 
-    public static Border SliderRow(string glyph, string title, string? subtitle, double min, double max, double value,
+    public static UIElement SliderRow(string glyph, string title, string? subtitle, double min, double max, double value,
         Action<double> onChanged, string? valueText = null)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        // 数值必须**跟着滑杆实时变化**：之前传进来的是一段写死的文本，拖完看着没反应（真实体验 bug）
         TextBlock? label = null;
         if (valueText is not null) label = Text(valueText, Tokens.FontDescription, secondary: true);
 
@@ -201,102 +125,74 @@ public static partial class UiKit
         return Row(glyph, title, subtitle, row);
     }
 
-    public static Border InputRow(string glyph, string title, string? subtitle, string value, Action<string> onChanged, double width = 180)
+    public static UIElement InputRow(string glyph, string title, string? subtitle, string value, Action<string> onChanged, double width = 180)
         => Row(glyph, title, subtitle, Input(value, onChanged, width));
 
-    public static Border ActionRow(string glyph, string title, string? subtitle, string buttonText, Action onClick, bool primary = false)
+    public static UIElement ActionRow(string glyph, string title, string? subtitle, string buttonText, Action onClick, bool primary = false)
     {
         var button = Btn(buttonText, onClick, primary);
         button.Margin = new Thickness(0);
         return Row(glyph, title, subtitle, button);
     }
 
-    public static Border NavRow(string glyph, string title, string? subtitle, Action onClick)
+    public static UIElement NavRow(string glyph, string title, string? subtitle, Action onClick)
     {
-        var chevron = Icons.Glyph(Icons.Right, 12, Theme.Current.TertiaryBrush);
-        chevron.Margin = new Thickness(Tokens.Space6, 0, Tokens.Space6, 0);
+        var chevron = new SymbolIcon { Symbol = SymbolRegular.ChevronRight24, FontSize = 12, Opacity = 0.6 };
+        chevron.Margin = new Thickness(Tokens.Space6, 0, Tokens.Space2, 0);
         return Row(glyph, title, subtitle, chevron, onClick);
     }
 
-    /// <summary>页面标题：28 SemiBold + 一句 12 号说明。</summary>
+    /// <summary>页面标题：28 SemiBold + 一句说明。</summary>
     public static UIElement PageHeader(string title, string? subtitle = null)
     {
-        var stack = new StackPanel { Margin = new Thickness(Tokens.Space4, Tokens.Space8, 0, Tokens.Space24) };
-        stack.Children.Add(new TextBlock
+        var stack = new StackPanel { Margin = new Thickness(Tokens.Space2, Tokens.Space8, 0, Tokens.Space20) };
+        stack.Children.Add(new WpfTextBlock
         {
             Text = title,
             FontSize = Tokens.FontPageTitle,
-            FontFamily = new FontFamily(Tokens.DisplayFontFamily),
-            FontWeight = FontWeights.SemiBold,
-            Foreground = Theme.Current.ForegroundBrush
+            FontWeight = FontWeights.SemiBold
         });
         if (!string.IsNullOrWhiteSpace(subtitle))
         {
-            stack.Children.Add(new TextBlock
+            stack.Children.Add(new WpfTextBlock
             {
                 Text = subtitle,
                 FontSize = Tokens.FontDescription,
-                Foreground = Theme.Current.SecondaryBrush,
-                Margin = new Thickness(0, Tokens.Space6, 0, 0),
-                TextWrapping = TextWrapping.Wrap
+                Opacity = 0.72,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, Tokens.Space6, 0, 0)
             });
         }
         return stack;
     }
 
-    /// <summary>左侧导航按钮：单色图标 + 文字 + 选中态（左侧强调条 + 淡底）。</summary>
-    public static Button NavButton(string glyph, string label, bool active, Action onClick)
+    /// <summary>左侧导航项（Fluent NavigationViewItem：自带图标、悬停、选中态）。</summary>
+    public static NavigationViewItem NavButton(string glyph, string label, bool active, Action onClick)
     {
-        var grid = new Grid { Height = 38 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Tokens.Space12) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Tokens.NavIconSize + Tokens.Space12) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        if (active)
+        var item = new NavigationViewItem
         {
-            var bar = new Border
-            {
-                Width = 3,
-                Height = 18,
-                CornerRadius = new CornerRadius(2),
-                Background = Theme.Current.AccentBrush,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            Grid.SetColumn(bar, 0);
-            grid.Children.Add(bar);
-        }
+            Content = label,
+            Icon = new SymbolIcon { Symbol = Icons.SymbolFor(glyph) },
+            IsActive = active,
+            Margin = new Thickness(Tokens.Space4, 1, Tokens.Space4, 1),
+            Cursor = Cursors.Hand
+        };
+        item.Click += (_, _) => onClick();
+        return item;
+    }
 
-        var icon = Icons.VectorFromKey(glyph, Tokens.NavIconSize);
-        Grid.SetColumn(icon, 2);
-        grid.Children.Add(icon);
-
-        var text = new TextBlock
+    /// <summary>导航分组标题。</summary>
+    public static NavigationViewItemHeader NavGroup(string label, double topMargin = 12)
+        => new()
         {
             Text = label,
-            FontSize = Tokens.FontBody,
-            Foreground = active ? Theme.Current.ForegroundBrush : Theme.Current.SecondaryBrush,
-            FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal,
-            VerticalAlignment = VerticalAlignment.Center
+            Margin = new Thickness(Tokens.Space4, topMargin, Tokens.Space4, Tokens.Space2)
         };
-        Grid.SetColumn(text, 3);
-        grid.Children.Add(text);
 
-        var button = new Button
-        {
-            Content = grid,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            Padding = new Thickness(0),
-            Margin = new Thickness(0, 1, 0, 1),
-            BorderThickness = new Thickness(0),
-            Background = active ? HoverBrush() : Brushes.Transparent,
-            Cursor = Cursors.Hand,
-            Tag = new CornerRadius(Tokens.CornerSmall)
-        };
-        button.Style = ControlStyles.NavButtonStyle();
-        if (active) button.Background = ControlStyles.AccentTint(0.16);
-        button.Click += (_, _) => onClick();
-        return button;
+    /// <summary>悬停/选中用的淡底（供少数自绘控件使用）。</summary>
+    public static SolidColorBrush HoverBrush()
+    {
+        var c = Theme.Current.Foreground;
+        return new SolidColorBrush(Color.FromArgb(Theme.Current.IsDark ? (byte)20 : (byte)12, c.R, c.G, c.B));
     }
 }

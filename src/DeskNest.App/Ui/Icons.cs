@@ -173,6 +173,77 @@ public static class Icons
         return Vector(fluent, size, tint);
     }
 
+    /// <summary>
+    /// 语义键 → WPF-UI 的 Fluent 符号（SymbolRegular）。迁移到 WPF-UI 之后界面统一用它，
+    /// 好处是图标与 DeskBox/系统同族、自动跟随主题前景色，也不用我们再维护 SVG 生成流程。
+    /// 未收录的键回落到 Settings24（不会崩）。
+    /// </summary>
+    public static Wpf.Ui.Controls.SymbolRegular SymbolFor(string glyphOrEmoji)
+    {
+        var name = SymbolName(glyphOrEmoji);
+        return Enum.TryParse<Wpf.Ui.Controls.SymbolRegular>(name, out var symbol)
+            ? symbol
+            : Wpf.Ui.Controls.SymbolRegular.Settings24;
+    }
+
+    /// <summary>语义键 → SymbolRegular 名字（含 24 尺寸后缀）。</summary>
+    public static string SymbolName(string glyphOrEmoji) => (glyphOrEmoji ?? "").Trim() switch
+    {
+        "🏠" or "home" => "Home24",
+        "⭐" or "star" => "Star24",
+        "🗂" or "📁" or "folder" => "Folder24",
+        "📂" or "folder_open" => "FolderOpen24",
+        "🧹" or "broom" or "organize" => "Broom24",
+        "🧩" or "widgets" => "AppsList24",
+        "🧱" or "modules" or "🔌" => "BoxMultiple24",
+        "🎨" or "appearance" or "color" => "PaintBrush24",
+        "💾" or "🗄" or "data" => "Save24",
+        "ℹ" or "about" => "Info24",
+        "🐾" or "🎭" or "pet" => "Emoji24",
+        "🖼" or "image" => "Image24",
+        "📈" or "perf" or "gauge" => "Gauge24",
+        "📊" or "chart" or "Σ" => "DataBarVertical24",
+        "⏱" or "usage" or "clock" or "🕘" or "🕐" => "Clock24",
+        "💰" or "💳" or "money" or "api" => "Money24",
+        "⏻" or "power" => "Power24",
+        "🔗" or "link" or "ai" => "Link24",
+        "🔒" or "lock" => "LockClosed24",
+        "🔍" or "🔎" or "search" => "Search24",
+        "🗑" or "🛑" or "delete" => "Delete24",
+        "＋" or "🧲" or "🆕" or "add" => "Add24",
+        "🌀" or "🔄" or "refresh" or "sync" => "ArrowSync24",
+        "⚠" or "warning" => "Warning24",
+        "❓" or "help" => "QuestionCircle24",
+        "✅" or "🎯" or "check" => "CheckmarkCircle24",
+        "👁" or "eye" => "Eye24",
+        "💬" or "🔔" or "note" or "🧾" => "Document24",
+        "🏷" or "tag" => "Tag24",
+        "🖥" or "monitor" or "desktop" => "Desktop24",
+        "☁" or "cloud" => "Cloud24",
+        "🚀" or "rocket" or "🤖" or "🧠" => "Rocket24",
+        "🧪" or "test" => "Beaker24",
+        "⌨" or "keyboard" or "shortcut" or "🖱" => "Keyboard24",
+        "🌐" or "globe" => "Globe24",
+        "📋" or "list" => "TextBulletListLtr24",
+        "📌" or "pin" => "Pin24",
+        "🎬" or "🎞" or "play" => "Play24",
+        "🎲" or "sort" => "ArrowSort24",
+        "📥" or "📦" or "download" => "ArrowDownload24",
+        "📤" or "upload" => "ArrowUpload24",
+        "🔑" or "key" => "Key24",
+        "🔢" => "NumberSymbol24",
+        "📏" or "📐" or "resize" => "Resize24",
+        "⬜" or "▭" or "grid" => "SquareHint24",
+        "🪟" or "window" => "Window24",
+        "💧" or "drop" => "Drop24",
+        "🌗" or "🌙" or "moon" => "DarkTheme24",
+        "☀" or "sun" => "WeatherSunny24",
+        "🚫" or "🧺" or "erase" => "Dismiss24",
+        "✍" or "edit" => "Rename24",
+        "🎞️" => "Play24",
+        _ => "Settings24"
+    };
+
     /// <summary>图标文本（单色，随前景色）。用于少量没有矢量资源的场合。</summary>
     public static TextBlock Glyph(string code, double size = Tokens.IconSize, Brush? foreground = null)
     {
