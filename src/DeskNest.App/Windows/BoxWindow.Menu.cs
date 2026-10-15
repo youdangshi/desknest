@@ -68,7 +68,7 @@ public sealed partial class BoxWindow
             Item("悬浮（鼠标移上去才显形）", () => SetTitleStyle("Floating"), checkable: true,
                 isChecked: current == "Floating", enabled: !inGroup,
                 reason: inGroup ? "格子组需要持续可见的标题栏" : null),
-            Item("隐藏（Alt+拖动移动盒子）", () => SetTitleStyle("Hidden"), checkable: true,
+            Item("隐藏（拖盒子任意处移动）", () => SetTitleStyle("Hidden"), checkable: true,
                 isChecked: current == "Hidden", enabled: !inGroup,
                 reason: inGroup ? "格子组需要持续可见的标题栏" : null)
         };
@@ -423,7 +423,7 @@ public sealed partial class BoxWindow
     /// <summary>当前标题样式（空值按"标准"处理）。</summary>
     private string TitleStyleKey => string.IsNullOrWhiteSpace(_box.TitleStyle) ? "Standard" : _box.TitleStyle;
 
-    /// <summary>标题栏被隐藏时，盒子要靠 Alt+拖动移动（没有标题栏就没有拖动热区）。</summary>
+    /// <summary>标题栏被隐藏时，盒子的其余部分就是拖动热区（拖任意处都能移动）。</summary>
     private bool IsTitleBarHidden => TitleStyleKey == "Hidden";
 
     private void SetTitleStyle(string style)
@@ -435,7 +435,7 @@ public sealed partial class BoxWindow
         {
             "Compact" => "紧凑",
             "Floating" => "悬浮（鼠标移上去才显形）",
-            "Hidden" => "隐藏（按住 Alt 拖动盒子）",
+            "Hidden" => "隐藏（拖动盒子任意处可移动）",
             _ => "标准"
         };
         Ui.Notifications.Toast("标题样式：" + label, style == "Hidden" ? 6 : 2);

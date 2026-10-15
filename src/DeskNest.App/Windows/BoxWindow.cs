@@ -98,7 +98,7 @@ public sealed partial class BoxWindow : Window
             Child = dock
         };
         Content = WindowDrag.WrapWithResizeGrips(_root, this, () => _box.LockSize, MinWidth, MinHeight, PersistGeometryNow);
-        _titleBar.ToolTip = "按住标题栏拖动盒子；右下角或任意边拖动可调整大小";
+        _titleBar.ToolTip = "按住标题栏、或盒子任意空白处都能拖动；右下角与四边可调整大小";
 
         // 右键盒子任意空白处 = 盒子菜单（以前只有标题栏的 ⋯ 按钮能打开，是个交互缺口）
         var boxMenu = new System.Windows.Controls.ContextMenu();
@@ -119,22 +119,12 @@ public sealed partial class BoxWindow : Window
         MouseEnter += (_, _) => UpdateTitleBarVisibility();
         MouseLeave += (_, _) => UpdateTitleBarVisibility();
 
-        // 标题栏隐藏时没有拖动热区，用 Alt+按住盒子任意位置来移动（菜单里会提示这一点）
-        _root.MouseLeftButtonDown += (_, e) =>
-        {
-            if (!IsTitleBarHidden) return;
-            if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) return;
-            try
-            {
-                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-                if (WindowMove.BeginDrag(hwnd)) PersistGeometryNow();
-            }
-            catch (Exception ex) { Log.Warn("Alt 拖动失败：" + ex.Message); }
-            e.Handled = true;
-        };
-
         // 拖动自己实现：DragMove() 对挂在 WorkerW 下的子窗口不可靠
-        WindowDrag.EnableMove(this, _titleBar, () => _box.LockPosition, PersistGeometryNow);
+        // 标题栏只是"顺手"，盒子空白处同样可以拖——新盒子大半是空的，
+        // 用户十有八九是抓着中间往下拖的（之前只有 30px 标题栏能拖，看起来就是"拖不动"）
+        Action hintLocked = () => Ui.Notifications.Toast("位置已锁定：右键盒子 → 取消「锁定位置」即可拖动", 4);
+        WindowDrag.EnableMove(this, _titleBar, () => _box.LockPosition, PersistGeometryNow, onBlocked: hintLocked);
+        WindowDrag.EnableMove(this, _root, () => _box.LockPosition, PersistGeometryNow, CanStartBodyDrag, onBlocked: hintLocked);
         _titleBar.MouseLeftButtonDown += TitleBar_MouseDown;
         MouseWheel += (_, e) =>
         {
@@ -165,6 +155,17 @@ public sealed partial class BoxWindow : Window
             Topmost = AppServices.Settings.Get("box.fallbackTopmost", true);
             Log.Warn("未能挂到桌面层，已降级为普通窗口");
         }
+
+        // 把窗口的真实状态写进日志：拖动/点击出问题时，这几行能直接定位是哪一环不对
+        try
+        {
+            Log.Info($"盒子窗口就绪：hwnd={hwnd}，挂桌面层={_attachedToDesktop}，" +
+                     $"可用系统拖动={WindowMove.CanUseNativeDrag(hwnd)}，" +
+                     $"DPI={VisualTreeHelper.GetDpi(this).DpiScaleX:0.00}，" +
+                     $"位置={Left:0},{Top:0}，尺寸={Width:0}x{Height:0}，" +
+                     $"锁定位置={_box.LockPosition}，锁定尺寸={_box.LockSize}");
+        }
+        catch (Exception ex) { Log.Warn("输出窗口诊断信息失败：" + ex.Message); }
     }
 
     private static Brush MakeBackground(BoxRecord box)
@@ -236,7 +237,7 @@ public sealed partial class BoxWindow : Window
 
     /// <summary>
     /// 四种标题栏样式：标准（默认 30 高）/ 紧凑（22 高、字号更小）/ 悬浮（鼠标移上去才显形）/
-    /// 隐藏（整条收起，靠 Alt+拖动移动）。
+    /// 隐藏（整条收起，拖盒子任意处都能移动）。
     /// </summary>
     private void ApplyTitleStyle()
     {
@@ -296,6 +297,25 @@ public sealed partial class BoxWindow : Window
         Left = Math.Round(left);
         Top = Math.Round(top);
         PersistGeometryNow();
+    }
+
+    /// <summary>
+    /// 窗口被系统按物理像素搬动之后，让 WPF 侧的 Left/Top（DIP）跟上真实位置。
+    /// 不这么做的话，下一次落盘会把旧位置写回去，"拉回屏幕"就白做了。
+    /// </summary>
+    public void SyncPositionFromWindow()
+    {
+        try
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (Native.Win32.WindowMove.PhysicalBounds(hwnd) is not { } rect) return;
+            var scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            if (scale <= 0) scale = 1;
+            _box.MarginX = rect.X / scale;
+            _box.MarginY = rect.Y / scale;
+            AppServices.Repo.Upsert(_box);
+        }
+        catch (Exception ex) { Log.Warn("同步窗口位置失败：" + ex.Message); }
     }
 
     /// <summary>Shift+F10 或键盘"菜单键"打开盒子菜单（不依赖右键）。</summary>
@@ -360,6 +380,29 @@ public sealed partial class BoxWindow : Window
     /// 否则截图里盒子是灰蒙蒙的、看起来像渲染坏了。拍完调用 <see cref="ApplyLook"/> 还原。
     /// </summary>
     public void PrepareForShot() => _root.Opacity = 1.0;
+
+    /// <summary>
+    /// 盒子空白处能不能起拖：点在盒子里的图标、列表项、按钮、标签页、滚动条上时不算——
+    /// 那些地方各自有自己的交互（双击打开、右键菜单、点按钮），不能被"移动盒子"抢掉。
+    /// </summary>
+    private bool CanStartBodyDrag(object? source)
+    {
+        if (_box.LockPosition) return false;
+
+        var node = source as System.Windows.DependencyObject;
+        while (node is not null)
+        {
+            if (ReferenceEquals(node, _iconPanel) || ReferenceEquals(node, _listPanel) || ReferenceEquals(node, _tabStrip))
+                return false;
+            if (node is System.Windows.Controls.Primitives.ButtonBase
+                or System.Windows.Controls.Primitives.TextBoxBase
+                or System.Windows.Controls.Primitives.ScrollBar)
+                return false;
+            if (ReferenceEquals(node, _root)) break;
+            node = VisualTreeHelper.GetParent(node);
+        }
+        return true;
+    }
 
     private void PersistGeometry()
     {

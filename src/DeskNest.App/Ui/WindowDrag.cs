@@ -53,7 +53,20 @@ public static class WindowDrag
         return (width, height, left, top);
     }
 
-    public static void EnableMove(Window window, FrameworkElement handle, Func<bool>? locked = null, Action? onFinished = null)
+    /// <summary>
+    /// 让某个元素可以拖动窗口。
+    ///
+    /// **收纳盒一律走手动增量拖动**。原因：盒子被挂在桌面层下（实测是"被 WorkerW 拥有"的
+    /// 顶层窗口），"发 WM_NCLBUTTONDOWN/HTCAPTION 让系统去拖"这条路在这种窗口上并不可靠——
+    /// 它可能悄无声息地什么都不做，而调用方却以为成功、直接 return，用户看到的就是"拖不动"。
+    /// 手动拖动每一步都在我们手里，而且能写测试。
+    /// </summary>
+    /// <param name="canStart">返回 false 时这次按下不触发拖动（比如点在盒子里的图标/按钮上）。</param>
+    /// <param name="preferNative">非收纳盒的普通窗口可以传 true，交给系统拖动（更跟手）。</param>
+    /// <param name="onBlocked">被"锁定位置"挡住时的回调，用来提示用户，而不是默默没反应。</param>
+    public static void EnableMove(Window window, FrameworkElement handle, Func<bool>? locked = null,
+        Action? onFinished = null, Func<object?, bool>? canStart = null, bool preferNative = false,
+        Action? onBlocked = null)
     {
         // 关键：容器必须有背景（透明也行）才参与命中测试。
         // 背景为 null 的 StackPanel/Border 在空白处"抓空气"——这就是"拖不动"的根因。
@@ -62,67 +75,131 @@ public static class WindowDrag
         else if (handle is Border border && border.Background is null)
             border.Background = Brushes.Transparent;
 
-        var dragging = false;
-        Point startScreen = default;
-        double startLeft = 0, startTop = 0;
-
-        handle.Cursor = Cursors.SizeAll;
+        if (handle.Cursor is null) handle.Cursor = Cursors.SizeAll;
         handle.MouseLeftButtonDown += (_, e) =>
         {
-            if (locked?.Invoke() == true) return;
+            if (locked?.Invoke() == true)
+            {
+                onBlocked?.Invoke();
+                return;
+            }
             if (e.ClickCount == 2) return;   // 双击留给调用方（卷起/展开）
+            if (canStart is not null && !canStart(e.OriginalSource)) return;
 
-            // 首选：系统自己的移动循环（跟手，多显示器/DPI 都不用我们操心）
-            try
+            if (preferNative)
             {
-                var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
-                if (DeskNest.Native.Win32.WindowMove.BeginDrag(hwnd))
+                try
                 {
-                    onFinished?.Invoke();
-                    e.Handled = true;
-                    return;
+                    var hwndNative = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+                    if (DeskNest.Native.Win32.WindowMove.CanUseNativeDrag(hwndNative)
+                        && DeskNest.Native.Win32.WindowMove.BeginDrag(hwndNative))
+                    {
+                        onFinished?.Invoke();
+                        e.Handled = true;
+                        return;
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                Core.Log.Warn("原生拖动失败，退回手动拖动：" + ex.Message);
+                catch (Exception ex) { Core.Log.Warn("原生拖动失败，改用手动拖动：" + ex.Message); }
             }
 
-            // 兜底：自己算增量（正常走不到这里）
-            dragging = true;
-            startScreen = handle.PointToScreen(e.GetPosition(handle));
-            startLeft = window.Left;
-            startTop = window.Top;
-            handle.CaptureMouse();
+            // 桌面盒走这里：自己算屏幕增量。用 PointToScreen 而不是元素内坐标，
+            // 这样即使拖动过程中窗口被改大小、元素重排，位移依然准。
+            BeginManualDrag(window, handle, e, onFinished);
             e.Handled = true;
         };
-        handle.MouseMove += (_, e) =>
+    }
+
+    /// <summary>手动拖动：按下时记住屏幕坐标，移动时按增量挪窗口，松开时落盘。</summary>
+    private static void BeginManualDrag(Window window, FrameworkElement handle, MouseButtonEventArgs e, Action? onFinished)
+    {
+        // PointToScreen 给的是**物理像素**，而 Window.Left/Top 是**与 DPI 无关的单位(DIP)**。
+        // 125% 缩放下直接相减会让盒子按鼠标的 1.25 倍跑——必须换算。
+        var scale = DpiScaleOf(handle);
+        var startScreen = handle.PointToScreen(e.GetPosition(handle));
+        var startLeft = window.Left;
+        var startTop = window.Top;
+        var dragging = true;
+        var moved = 0.0;
+
+        Core.Log.Info($"开始拖动窗口（手动）：起点 {startLeft:0},{startTop:0}，DPI={scale:0.00}");
+
+        void OnMove(object _, MouseEventArgs args)
         {
             if (!dragging) return;
-            var now = handle.PointToScreen(e.GetPosition(handle));
-            window.Left = startLeft + (now.X - startScreen.X);
-            window.Top = startTop + (now.Y - startScreen.Y);
-        };
-        handle.MouseLeftButtonUp += (_, _) =>
+            var now = handle.PointToScreen(args.GetPosition(handle));
+            var dx = (now.X - startScreen.X) / scale;
+            var dy = (now.Y - startScreen.Y) / scale;
+            window.Left = startLeft + dx;
+            window.Top = startTop + dy;
+            moved = Math.Max(moved, Math.Abs(dx) + Math.Abs(dy));
+        }
+
+        void OnUp(object _, MouseButtonEventArgs args)
         {
             if (!dragging) return;
             dragging = false;
             handle.ReleaseMouseCapture();
+            handle.MouseMove -= OnMove;
+            handle.MouseLeftButtonUp -= OnUp;
+            Core.Log.Info($"结束拖动窗口：位移约 {moved:0} DIP，落点 {window.Left:0},{window.Top:0}");
             onFinished?.Invoke();
-        };
+        }
+
+        handle.MouseMove += OnMove;
+        handle.MouseLeftButtonUp += OnUp;
+        handle.CaptureMouse();
+    }
+
+    /// <summary>取元素所在显示器的缩放比例（1.0 表示 100%）。</summary>
+    internal static double DpiScaleOf(Visual visual)
+    {
+        try { return VisualTreeHelper.GetDpi(visual).DpiScaleX; }
+        catch { return 1.0; }
     }
 
     public static UIElement WrapWithResizeGrips(UIElement content, Window window, Func<bool>? sizeLocked = null,
         double minWidth = 160, double minHeight = 96, Action? onFinished = null)
     {
+        // 手柄尺寸：以前右/左/上/下只有 6px，用户基本点不中（"没法改大小"的一大原因）。
+        // 现在边 10px、右下角 20px，并且右下角画一个可见的小三角做提示。
+        const double edge = 10;
+        const double corner = 20;
+
         var grid = new Grid();
         grid.Children.Add(content);
-        grid.Children.Add(CreateGrip(window, Edge.BottomRight, Cursors.SizeNWSE, HorizontalAlignment.Right, VerticalAlignment.Bottom, 14, 14, sizeLocked, minWidth, minHeight, onFinished));
-        grid.Children.Add(CreateGrip(window, Edge.Right, Cursors.SizeWE, HorizontalAlignment.Right, VerticalAlignment.Center, 6, 28, sizeLocked, minWidth, minHeight, onFinished));
-        grid.Children.Add(CreateGrip(window, Edge.Left, Cursors.SizeWE, HorizontalAlignment.Left, VerticalAlignment.Center, 6, 28, sizeLocked, minWidth, minHeight, onFinished));
-        grid.Children.Add(CreateGrip(window, Edge.Bottom, Cursors.SizeNS, HorizontalAlignment.Center, VerticalAlignment.Bottom, 28, 6, sizeLocked, minWidth, minHeight, onFinished));
-        grid.Children.Add(CreateGrip(window, Edge.Top, Cursors.SizeNS, HorizontalAlignment.Center, VerticalAlignment.Top, 28, 6, sizeLocked, minWidth, minHeight, onFinished));
+        grid.Children.Add(CreateGrip(window, Edge.BottomRight, Cursors.SizeNWSE, HorizontalAlignment.Right, VerticalAlignment.Bottom, corner, corner, sizeLocked, minWidth, minHeight, onFinished));
+        grid.Children.Add(CreateGrip(window, Edge.Right, Cursors.SizeWE, HorizontalAlignment.Right, VerticalAlignment.Center, edge, 40, sizeLocked, minWidth, minHeight, onFinished));
+        grid.Children.Add(CreateGrip(window, Edge.Left, Cursors.SizeWE, HorizontalAlignment.Left, VerticalAlignment.Center, edge, 40, sizeLocked, minWidth, minHeight, onFinished));
+        grid.Children.Add(CreateGrip(window, Edge.Bottom, Cursors.SizeNS, HorizontalAlignment.Center, VerticalAlignment.Bottom, 40, edge, sizeLocked, minWidth, minHeight, onFinished));
+        grid.Children.Add(CreateGrip(window, Edge.Top, Cursors.SizeNS, HorizontalAlignment.Center, VerticalAlignment.Top, 40, edge, sizeLocked, minWidth, minHeight, onFinished));
+        grid.Children.Add(CreateCornerHint(corner));
         return grid;
+    }
+
+    /// <summary>右下角的三点提示：让人一眼看出"这里能拉大小"。它不吃鼠标事件。</summary>
+    private static FrameworkElement CreateCornerHint(double size)
+    {
+        var hint = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Vertical,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 4, 4),
+            IsHitTestVisible = false,
+            Opacity = 0.45
+        };
+        foreach (var width in new[] { 9.0, 6.0, 3.0 })
+        {
+            hint.Children.Add(new Rectangle
+            {
+                Width = width,
+                Height = 1.5,
+                Margin = new Thickness(0, 1.5, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Fill = Theme.Desktop.SecondaryBrush
+            });
+        }
+        return hint;
     }
 
     private static FrameworkElement CreateGrip(Window window, Edge edge, Cursor cursor,
@@ -141,13 +218,19 @@ public static class WindowDrag
         };
 
         var resizing = false;
+        var scale = 1.0;
         Point startScreen = default;
         double startWidth = 0, startHeight = 0, startLeft = 0, startTop = 0;
 
         grip.MouseLeftButtonDown += (_, e) =>
         {
-            if (sizeLocked?.Invoke() == true) return;
+            if (sizeLocked?.Invoke() == true)
+            {
+                Ui.Notifications.Toast("尺寸已锁定：右键盒子 → 「锁定大小」取消勾选即可拉伸", 4);
+                return;
+            }
             resizing = true;
+            scale = DpiScaleOf(grip);
             startScreen = grip.PointToScreen(e.GetPosition(grip));
             startWidth = window.Width;
             startHeight = window.Height;
@@ -160,8 +243,9 @@ public static class WindowDrag
         {
             if (!resizing) return;
             var now = grip.PointToScreen(e.GetPosition(grip));
-            var dx = now.X - startScreen.X;
-            var dy = now.Y - startScreen.Y;
+            // 同样是物理像素 → DIP 的换算（见 BeginManualDrag 里的说明）
+            var dx = (now.X - startScreen.X) / scale;
+            var dy = (now.Y - startScreen.Y) / scale;
 
             var next = ComputeResize(edge, startWidth, startHeight, startLeft, startTop, dx, dy, minWidth, minHeight);
             window.Width = next.Width;

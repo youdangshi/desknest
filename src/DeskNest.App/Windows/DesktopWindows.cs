@@ -156,25 +156,40 @@ public sealed class DesktopWindows
         if (primary is null || monitors.Count == 0) return 0;
 
         var rescued = 0;
-        double cursorX = primary.WorkX + 24, cursorY = primary.WorkY + 24;
+        int x = primary.WorkX + 24, y = primary.WorkY + 24;
 
-        foreach (var win in _boxes.Values)
+        foreach (var win in _boxes.Values.Concat<System.Windows.Window>(_widgets.Values))
         {
-            if (monitors.Any(m => m.IntersectsWorkArea(win.Left, win.Top, Math.Max(80, win.Width), 32))) continue;
-            win.MoveTo(cursorX, cursorY);
-            cursorY += 40;
+            // 注意单位：WPF 的 Left/Top 是 DIP，显示器工作区是物理像素。
+            // 直接拿 Left/Top 去比，125% 缩放下会算出一个"看着在屏幕内、其实在外面"的位置，
+            // 于是跑出屏幕的盒子永远拉不回来。这里统一用窗口的物理矩形来判断。
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(win).Handle;
+            var bounds = Native.Win32.WindowMove.PhysicalBounds(hwnd);
+            if (bounds is not { } rect) continue;
+
+            if (monitors.Any(m => m.IntersectsWorkArea(rect.X, rect.Y, Math.Max(80, rect.Width), 32))) continue;
+
+            var target = ClampIntoWorkArea(primary, x, y, rect.Width, rect.Height);
+            if (!Native.Win32.WindowMove.MoveToPhysical(hwnd, target.X, target.Y)) continue;
+            Log.Info($"把跑出屏幕的窗口拉回主屏：{bounds.Value.X},{bounds.Value.Y} → {target.X},{target.Y}");
+            y += 40;
             rescued++;
         }
-        foreach (var win in _widgets.Values)
+        if (rescued > 0)
         {
-            if (monitors.Any(m => m.IntersectsWorkArea(win.Left, win.Top, Math.Max(80, win.Width), 32))) continue;
-            win.Left = cursorX;
-            win.Top = cursorY;
-            cursorY += 40;
-            rescued++;
+            // 物理位置变了，WPF 那边也要跟上（否则下次落盘会把旧位置写回去）
+            foreach (var win in _boxes.Values) win.SyncPositionFromWindow();
+            Log.Info($"已把 {rescued} 个跑出屏幕的窗口拉回主屏");
         }
-        if (rescued > 0) Log.Info($"已把 {rescued} 个跑出屏幕的窗口拉回主屏");
         return rescued;
+    }
+
+    /// <summary>把窗口的左上角夹进工作区，保证标题栏一定看得见。</summary>
+    private static (int X, int Y) ClampIntoWorkArea(Native.Win32.MonitorInfo area, int x, int y, int width, int height)
+    {
+        var maxX = Math.Max(area.WorkX, area.WorkRight - Math.Min(width, area.WorkWidth));
+        var maxY = Math.Max(area.WorkY, area.WorkBottom - Math.Min(height, area.WorkHeight));
+        return (Math.Clamp(x, area.WorkX, maxX), Math.Clamp(y, area.WorkY, maxY));
     }
 
     /// <summary>
