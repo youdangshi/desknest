@@ -102,6 +102,22 @@ public static partial class UiKit
     public static UIElement ComboRow(string glyph, string title, string? subtitle, IEnumerable<string> items, string selected, Action<string> onChanged)
         => Row(glyph, title, subtitle, Combo(items, selected, onChanged, 150));
 
+    /// <summary>
+    /// 带中文标签的下拉行：界面上显示中文，设置里仍然存原始值
+    /// （配色/材质这类值是设置文件与代码里的枚举名，直接显示会满屏英文）。
+    /// </summary>
+    public static UIElement ComboRow(string glyph, string title, string? subtitle,
+        (string Value, string Label)[] items, string selected, Action<string> onChanged)
+    {
+        var values = items.Select(i => i.Value).ToList();
+        var labels = items.ToDictionary(i => i.Value, i => i.Label, StringComparer.OrdinalIgnoreCase);
+
+        var box = Combo(items.Select(i => i.Label), labels.TryGetValue(selected, out var current) ? current : items.FirstOrDefault().Label,
+            label => onChanged(labels.FirstOrDefault(kv => kv.Value == label).Key ?? label), 150);
+        box.ToolTip = string.Join(" / ", items.Select(i => i.Label));
+        return Row(glyph, title, subtitle, box);
+    }
+
     public static UIElement SliderRow(string glyph, string title, string? subtitle, double min, double max, double value,
         Action<double> onChanged, string? valueText = null)
     {

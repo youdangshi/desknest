@@ -332,36 +332,35 @@ public sealed class Repository
     {
         lock (_searchIndexGate)
         {
-            _db.Exec("BEGIN;");
-            var count = 0;
-            try
+            // 先探一下有没有内容：一条都没有时绝不能提交（那等于把整张索引表清空）
+            using var cursor = entries.GetEnumerator();
+            if (!cursor.MoveNext())
             {
-                // DELETE 放进事务里：否则中途失败会留下一张空表，用户重启后搜索"什么都没了"
+                Log.Warn("搜索索引为空，已放弃这次落盘（不会清空已有索引）");
+                return;
+            }
+
+            var count = 0;
+            // 用 InTransaction：整段持有连接锁，别的写入（删盒子、改设置）不会被卷进这次事务，
+            // 更不会被它的回滚一起带走——那正是"点了删除没反应"的一类成因。
+            _db.InTransaction(() =>
+            {
+                // DELETE 也在事务里：否则中途失败会留下一张空表，用户重启后搜索"什么都没了"
                 _db.Exec("DELETE FROM search_index;");
-                foreach (var e in entries)
+                do
                 {
+                    var e = cursor.Current;
                     _db.Exec("INSERT OR REPLACE INTO search_index(path,is_dir,size,mtime) VALUES($p,$d,$s,$m)",
                         ("$p", e.Path), ("$d", e.IsDirectory ? 1 : 0), ("$s", e.Size), ("$m", e.Modified.Ticks));
-                    if (++count % 2000 == 0)
+                    count++;
+                    if (count % 2000 == 0)
                     {
+                        // 每 2000 条提交一次，避免一个事务太大；提交后紧接着开新事务
                         _db.Exec("COMMIT;");
                         _db.Exec("BEGIN;");
                     }
-                }
-                if (count == 0)
-                {
-                    // 一条都没有就提交，等于把整张索引表清空；这种情况直接放弃这次写入
-                    _db.Exec("ROLLBACK;");
-                    Log.Warn("搜索索引为空，已放弃这次落盘（不会清空已有索引）");
-                    return;
-                }
-                _db.Exec("COMMIT;");
-            }
-            catch
-            {
-                try { _db.Exec("ROLLBACK;"); } catch { }
-                throw;
-            }
+                } while (cursor.MoveNext());
+            });
             Log.Info($"搜索索引已保存：{count} 条");
             // 索引是"整表重写"，会留下大量空闲页；顺手回收 WAL 并让空闲页可被复用，
             // 否则数据库文件会一轮比一轮大（曾经涨到 1.6 GB）。

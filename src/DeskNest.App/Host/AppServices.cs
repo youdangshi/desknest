@@ -14,6 +14,7 @@ public static class AppServices
     public static SettingsService Settings { get; private set; } = null!;
     public static FileOps FileOps { get; private set; } = null!;
     public static OrganizeEngine Organizer { get; private set; } = null!;
+    public static BoxService Boxes { get; private set; } = null!;
     public static SearchService Search { get; private set; } = null!;
     public static BackupService Backup { get; private set; } = null!;
     public static UsageStatsService Usage { get; private set; } = null!;
@@ -43,6 +44,7 @@ public static class AppServices
 
         FileOps = new FileOps(Repo);
         Organizer = new OrganizeEngine(Repo, FileOps);
+        Boxes = new BoxService(Repo, FileOps);
         Search = new SearchService(Repo);
         Backup = new BackupService(Settings);
         Usage = new UsageStatsService(Repo, Settings, ForegroundWatcher.Sample);

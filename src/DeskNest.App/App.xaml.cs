@@ -62,6 +62,10 @@ public partial class App : Application
         _autoOrganizeTimer.Tick += (_, _) => AutoOrganizeTick();
         _autoOrganizeTimer.Start();
 
+        // 自动检查更新：默认关；打开后启动时静默查一次，只有真的有新版本才提示（不发任何本机信息）
+        if (AppServices.Settings.Get("update.autoCheck", false) && PageShotter.OutputDir is null)
+            _ = CheckUpdateInBackgroundAsync();
+
         // 首次运行或用户没勾"静默启动"时，启动就把主窗口显示出来；
         // 之前写死了"引导完成后永不显示"，与设置里的「静默启动」开关自相矛盾（用户会以为程序没启动）。
         var onboardingDone = AppServices.Settings.Get("onboarding.done", false);
@@ -115,6 +119,28 @@ public partial class App : Application
                 });
         }
         catch (Exception ex) { Log.Warn("自动整理异常：" + ex.Message); }
+    }
+
+    /// <summary>
+    /// 后台静默检查更新：只有确实存在更新的版本才弹提示，其余情况（没网、还没发版本、已是最新）一律安静。
+    /// 这样"启动时自动检查"就不会变成打扰。
+    /// </summary>
+    private async Task CheckUpdateInBackgroundAsync()
+    {
+        try
+        {
+            var updater = new UpdateService();
+            var result = await updater.CheckAsync(AppInfo.Version);
+            AppServices.Settings.Set("update.lastCheck", DateTimeOffset.Now);
+            if (result.Failed || result.Update is not { } info) return;
+            if (!VersionCompare.IsNewer(info.Version, AppInfo.Version)) return;
+
+            Log.Info($"发现新版本：{info.Version}（当前 {AppInfo.Version}）");
+            await Dispatcher.InvokeAsync(() =>
+                Ui.Notifications.Toast($"桌巢有新版本 {info.Version}（当前 {AppInfo.Version}），在「关于」页可以查看", 10,
+                    action: () => ShowMain("about"), actionText: "去看看"));
+        }
+        catch (Exception ex) { Log.Warn("后台检查更新失败：" + ex.Message); }
     }
 
     public void ToggleLayer()

@@ -49,7 +49,7 @@ public sealed class DesktopWindows
         var ids = AppServices.Repo.Boxes().Select(b => b.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var id in _boxes.Keys.Where(k => !ids.Contains(k)).ToList())
         {
-            try { _boxes[id].Close(); } catch { }
+            try { CloseSafely(_boxes[id]); } catch { }
             _boxes.Remove(id);
         }
         foreach (var box in AppServices.Repo.Boxes())
@@ -64,6 +64,32 @@ public sealed class DesktopWindows
     }
 
     public void NotifyBoxClosed(string boxId) => _boxes.Remove(boxId);
+
+    /// <summary>关掉某个盒子的桌面窗口（删盒子时必须真的关掉，不能只从数据库里删）。</summary>
+    public void CloseBox(string boxId)
+    {
+        if (!_boxes.TryGetValue(boxId, out var win)) return;
+        try { CloseSafely(win); }
+        catch (Exception ex) { Log.Warn($"关闭盒子窗口失败 {boxId}：{ex.Message}"); }
+        _boxes.Remove(boxId);
+    }
+
+    /// <summary>
+    /// 关闭桌面层窗口：**先脱离桌面层再关**。
+    /// 盒子的父窗口是 explorer 的 WorkerW（跨进程父子关系），挂着父窗口直接销毁时
+    /// 有时会留下一个"关不掉的幽灵窗口"——用户看到的就是"格子删不掉"。
+    /// </summary>
+    private static void CloseSafely(System.Windows.Window win)
+    {
+        try
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(win).Handle;
+            if (hwnd != IntPtr.Zero) Native.Win32.DesktopLayer.Detach(hwnd);
+        }
+        catch (Exception ex) { Log.Warn("关闭前脱离桌面层失败：" + ex.Message); }
+
+        win.Close();
+    }
 
     /// <summary>
     /// 文档截图专用：把桌面层窗口临时从 WorkerW 上"摘"下来并置顶。
@@ -289,9 +315,9 @@ public sealed class DesktopWindows
 
     public void CloseAll()
     {
-        foreach (var w in _boxes.Values) { try { w.Close(); } catch { } }
-        foreach (var w in _widgets.Values) { try { w.Close(); } catch { } }
-        try { _pet?.Close(); } catch { }
+        foreach (var w in _boxes.Values) { try { CloseSafely(w); } catch { } }
+        foreach (var w in _widgets.Values) { try { CloseSafely(w); } catch { } }
+        try { if (_pet is not null) CloseSafely(_pet); } catch { }
         _boxes.Clear();
         _widgets.Clear();
     }

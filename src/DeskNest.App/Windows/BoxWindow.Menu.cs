@@ -339,24 +339,29 @@ public sealed partial class BoxWindow
     private void DeleteBox()
     {
         var confirm = MessageBox.Show(
+            this,
             $"确定删除盒子「{_box.Name}」吗？\n\n盒内文件会逐个还原到原位置；原位置不存在时还原到桌面。",
             "删除收纳盒", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.OK) return;
 
-        var items = AppServices.Repo.Items(_box.Id, _box.Kind == BoxKind.Mapped);
-        var failed = 0;
-        if (_box.Kind != BoxKind.Mapped)
+        try
         {
-            foreach (var item in items)
+            var outcome = AppServices.Boxes.Delete(_box);
+            if (outcome.StillInDatabase)
             {
-                var res = AppServices.FileOps.RestoreToOriginal(item.StoredPath ?? item.SourcePath, item.SourcePath);
-                if (!res.Ok) failed++;
+                Ui.Notifications.Toast("删除没生效：记录仍然在库里，请把日志发给开发者", 8);
+                return;
             }
+            var extra = outcome.Failed > 0 ? $"，{outcome.Failed} 个文件还原失败（见日志）" : "";
+            Ui.Notifications.Toast($"已删除「{_box.Name}」，还原 {outcome.Restored} 个文件{extra}", 5);
+            Close();
+            if (App.Current is App app) app.Desktop.NotifyBoxClosed(_box.Id);
         }
-        AppServices.Repo.DeleteBox(_box.Id);
-        Ui.Notifications.Toast(failed > 0 ? $"有 {failed} 个文件还原失败（见日志）" : "盒子已删除", failed > 0 ? 6 : 3);
-        Close();
-        if (App.Current is App app) app.Desktop.NotifyBoxClosed(_box.Id);
+        catch (Exception ex)
+        {
+            Log.Error($"删除盒子失败：{ex}");
+            Ui.Notifications.Toast("删除失败：" + ex.Message, 8);
+        }
     }
 
     public void RefreshGroupTabsPublic()

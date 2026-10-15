@@ -87,13 +87,13 @@ public static class BoxesPage
                     AppServices.Repo.Upsert(captured);
                     (Application.Current as App)?.Desktop.ApplyLookToAll();
                 }, ((int)captured.CornerRadius).ToString()),
-                UiKit.ComboRow("🪟", "材质", null, new[] { "Acrylic", "Mica", "Solid" }, captured.Material, m =>
+                UiKit.ComboRow("🪟", "材质", null, UiOptions.Materials, captured.Material, m =>
                 {
                     captured.Material = m;
                     AppServices.Repo.Upsert(captured);
                     (Application.Current as App)?.Desktop.ApplyLookToAll();
                 }),
-                UiKit.ComboRow("📋", "视图", null, new[] { "Icon", "List" }, captured.ViewMode, m =>
+                UiKit.ComboRow("📋", "视图", null, UiOptions.ViewModes, captured.ViewMode, m =>
                 {
                     captured.ViewMode = m;
                     AppServices.Repo.Upsert(captured);
@@ -114,16 +114,31 @@ public static class BoxesPage
                 }),
                 UiKit.ActionRow("🗑", "删除这个盒子", "盒内文件会逐个还原到原位置（原位置不存在则还原到桌面）", "删除", () =>
                 {
-                    var ok = MessageBox.Show($"删除盒子「{captured.Name}」并把盒内文件还原到原位置？", "删除收纳盒",
+                    // 确认框挂到主窗口上：不指定拥有者时对话框有可能跑到主窗口后面，
+                    // 用户就会觉得"点了删除没反应"
+                    var ok = MessageBox.Show(host, $"删除盒子「{captured.Name}」并把盒内文件还原到原位置？", "删除收纳盒",
                         MessageBoxButton.OKCancel, MessageBoxImage.Warning);
                     if (ok != MessageBoxResult.OK) return;
-                    if (captured.Kind != BoxKind.Mapped)
+
+                    try
                     {
-                        foreach (var item in AppServices.Repo.Items(captured.Id, false))
-                            AppServices.FileOps.RestoreToOriginal(item.StoredPath ?? item.SourcePath, item.SourcePath);
+                        var outcome = AppServices.Boxes.Delete(captured);
+                        if (outcome.StillInDatabase)
+                        {
+                            Ui.Notifications.Toast("删除没生效：记录仍然在库里，请把日志发给开发者", 8);
+                        }
+                        else
+                        {
+                            (Application.Current as App)?.Desktop.CloseBox(captured.Id);
+                            var extra = outcome.Failed > 0 ? $"，{outcome.Failed} 个文件还原失败（见日志）" : "";
+                            Ui.Notifications.Toast($"已删除「{captured.Name}」，还原 {outcome.Restored} 个文件{extra}", 5);
+                        }
                     }
-                    AppServices.Repo.DeleteBox(captured.Id);
-                    (Application.Current as App)?.Desktop.ReloadBoxes();
+                    catch (Exception ex)
+                    {
+                        Log.Error($"删除盒子失败：{ex}");
+                        Ui.Notifications.Toast("删除失败：" + ex.Message, 8);
+                    }
                     host.RefreshCurrent();
                 })
             };

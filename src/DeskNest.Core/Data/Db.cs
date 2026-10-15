@@ -154,6 +154,31 @@ public sealed class Db : IDisposable
         Exec("VACUUM;");
     }
 
+    /// <summary>
+    /// 在一个事务里跑一段写入，**整段持有连接锁**。
+    /// 这一点很关键：Db 平时是"每条语句各自加锁"，而 BEGIN/COMMIT 是跨语句的——
+    /// 如果事务开着的时候别的线程正好在删盒子/改设置，那条语句会被卷进这个事务里，
+    /// 一旦这里回滚，用户刚才的操作就跟着一起没了（表现为"点了没反应"）。
+    /// 锁是可重入的，所以 body 里照常调用 Exec。
+    /// </summary>
+    public void InTransaction(Action body)
+    {
+        lock (_gate)
+        {
+            Exec("BEGIN;");
+            try
+            {
+                body();
+                Exec("COMMIT;");
+            }
+            catch
+            {
+                try { Exec("ROLLBACK;"); } catch { }
+                throw;
+            }
+        }
+    }
+
     public void Dispose()
     {
         try { _conn.Close(); _conn.Dispose(); } catch { }

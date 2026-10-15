@@ -156,7 +156,7 @@ public static class ApiPage
     public static UIElement Build(MainWindow host)
     {
         var col = UiKit.Col();
-        col.Children.Add(UiKit.PageHeader("API 面板", "看各模型的调用情况与额度；Key 用 Windows DPAPI 加密后存本机，界面默认打码。"));
+        col.Children.Add(UiKit.PageHeader("API 面板", "看各模型的调用情况与额度；密钥用 Windows 的 DPAPI 加密后只存本机，界面默认打码。"));
 
         col.Children.Add(UiKit.Section("添加模型",
             UiKit.ActionRow("🐋", "DeepSeek", "https://api.deepseek.com/v1", "添加",
@@ -175,14 +175,14 @@ public static class ApiPage
             var captured = provider;
             var stat = AppServices.Api.Stat(captured.Id);
             rows.Add(UiKit.Row("🔑", captured.Name,
-                $"Key {AppServices.Api.KeyPreview(captured) ?? "未设置"} · 近 7 天调用 {stat.Calls} 次 · 成功率 {stat.SuccessRate:0.#}% · 平均 {stat.AvgLatencyMs} ms",
+                $"密钥 {AppServices.Api.KeyPreview(captured) ?? "未设置"} · 近 7 天调用 {stat.Calls} 次 · 成功率 {stat.SuccessRate:0.#}% · 平均 {stat.AvgLatencyMs} 毫秒",
                 UiKit.Row(
                     UiKit.Toggle(captured.Enabled, v =>
                     {
                         captured.Enabled = v;
                         AppServices.Repo.Upsert(captured);
                     }),
-                    UiKit.Btn("设置 Key", () => SetKey(host, captured)),
+                    UiKit.Btn("设置密钥", () => SetKey(host, captured)),
                     UiKit.Btn("测试", async () =>
                     {
                         Ui.Notifications.Toast("正在测试…", 2);
@@ -203,7 +203,7 @@ public static class ApiPage
     private static void Add(string name, string url, string model, MainWindow host)
     {
         AppServices.Repo.Upsert(new ApiProviderRecord { Name = name, BaseUrl = url, Model = model });
-        Ui.Notifications.Toast($"已添加 {name}，点「设置 Key」填入密钥", 4);
+        Ui.Notifications.Toast($"已添加 {name}，点「设置密钥」填入", 4);
         host.RefreshCurrent();
     }
 
@@ -212,7 +212,7 @@ public static class ApiPage
         var input = UiKit.Input("", _ => { }, 320);
         var win = new Window
         {
-            Title = "设置 API Key（" + provider.Name + "）",
+            Title = "设置 API 密钥（" + provider.Name + "）",
             Width = 460,
             Height = 220,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
@@ -224,12 +224,12 @@ public static class ApiPage
         {
             AppServices.Api.Save(provider, input.Text.Trim());
             win.Close();
-            Ui.Notifications.Toast("Key 已加密保存", 3);
+            Ui.Notifications.Toast("密钥已加密保存", 3);
             host.RefreshCurrent();
         };
         win.Content = UiKit.Col(
-            UiKit.PageHeader("设置 API Key", "保存后立即用 Windows DPAPI 加密，只在本机可用。"),
-            UiKit.Section("密钥", UiKit.Row("🔑", "粘贴 Key", provider.BaseUrl, input)),
+            UiKit.PageHeader("设置 API 密钥", "保存后立即用 Windows 的 DPAPI 加密，只在本机可用。"),
+            UiKit.Section("密钥", UiKit.Row("🔑", "粘贴密钥", provider.BaseUrl, input)),
             UiKit.Row("", "", null, UiKit.Row(save, UiKit.Btn("取消", () => win.Close()))));
         win.ShowDialog();
     }
@@ -251,7 +251,7 @@ public static class PowerPage
                     AppServices.Power.Apply(plan);
                 }),
             UiKit.ComboRow("⏱", "触发方式", "定时 / 倒计时 / 空闲后",
-                new[] { "Clock", "Countdown", "Idle" }, plan.Trigger.ToString(), v =>
+                UiOptions.PowerTriggers, plan.Trigger.ToString(), v =>
                 {
                     if (Enum.TryParse<PowerTriggerKind>(v, out var kind)) plan.Trigger = kind;
                 }),
@@ -269,7 +269,7 @@ public static class PowerPage
             {
                 if (int.TryParse(v, out var m)) plan.WarnMinutesBefore = Math.Clamp(m, 1, 60);
             }, 80),
-            UiKit.ComboRow("🎯", "执行动作", null, new[] { "Shutdown", "Restart", "Sleep" }, plan.Action.ToString(), v =>
+            UiKit.ComboRow("🎯", "执行动作", null, UiOptions.PowerActions, plan.Action.ToString(), v =>
             {
                 if (Enum.TryParse<PowerActionKind>(v, out var action)) plan.Action = action;
             }),
@@ -442,27 +442,120 @@ public static class DataPage
 
 public static class AboutPage
 {
+    private static readonly UpdateService Updater = new();
+
     public static UIElement Build(MainWindow host)
     {
         var col = UiKit.Col();
-        col.Children.Add(UiKit.PageHeader("桌巢 DeskNest", "版本 1.0.0 · MIT 开源 · 数据全部留在本机"));
+        col.Children.Add(UiKit.PageHeader(AppInfo.ProductName,
+            $"版本 {AppInfo.Version} · MIT 开源 · 数据全部留在本机"));
+
+        // 更新结果就地显示在这一块里，按钮点完不用再找地方看结果
+        var resultBox = new StackPanel { Margin = new Thickness(0, Tokens.Space4, 0, 0) };
+        resultBox.Children.Add(UiKit.Text(LastCheckText(), Tokens.FontDescription, secondary: true));
+
+        var checkBtn = UiKit.Btn("检查更新", () => { }, true);
+        checkBtn.Click += async (_, _) =>
+        {
+            checkBtn.IsEnabled = false;
+            checkBtn.Content = "正在检查…";
+            resultBox.Children.Clear();
+            resultBox.Children.Add(UiKit.Text("正在向 GitHub 查询最新发布版…", Tokens.FontDescription, secondary: true));
+
+            var result = await Task.Run(() => Updater.CheckAsync(AppInfo.Version));
+            AppServices.Settings.Set("update.lastCheck", DateTimeOffset.Now);
+
+            checkBtn.Content = "检查更新";
+            checkBtn.IsEnabled = true;
+            resultBox.Children.Clear();
+
+            if (result.Failed)
+            {
+                resultBox.Children.Add(UiKit.Banner(BannerKind.Warning, result.Message));
+            }
+            else if (result.Update is { } info && VersionCompare.IsNewer(info.Version, AppInfo.Version))
+            {
+                resultBox.Children.Add(UiKit.Banner(BannerKind.Success,
+                    $"发现新版本 {info.Version}" + (info.PublishedAt is { } at ? $"（发布于 {at.LocalDateTime:yyyy-MM-dd}）" : "")));
+                var notes = string.IsNullOrWhiteSpace(info.Notes) ? "这次发布没有写更新说明。" : Shorten(info.Notes!, 260);
+                resultBox.Children.Add(UiKit.Text(notes, Tokens.FontDescription, secondary: true));
+                resultBox.Children.Add(UiKit.Row(
+                    UiKit.Btn("打开下载页", () => OpenUrl(info.Url), true),
+                    UiKit.Btn("稍后再说", () => { })));
+            }
+            else
+            {
+                resultBox.Children.Add(UiKit.Banner(BannerKind.Info, result.Message));
+                resultBox.Children.Add(UiKit.Row(UiKit.Btn("查看更新日志", () => OpenUrl(Updater.ChangelogUrl))));
+            }
+
+            resultBox.Children.Add(UiKit.Text(LastCheckText(), Tokens.FontDescription, secondary: true));
+        };
+
+        col.Children.Add(UiKit.Section("版本与更新",
+            UiKit.Row(Icons.Download, "当前版本", $"{AppInfo.Version}（开源免费，MIT 许可）", null),
+            UiKit.Row(Icons.Refresh, "检查更新", $"查询 GitHub 上的最新发布版：{Updater.Owner}/{Updater.Repo}",
+                UiKit.Row(checkBtn, UiKit.Btn("更新日志", () => OpenUrl(Updater.ChangelogUrl)))),
+            UiKit.ToggleRow(Icons.Clock, "启动时自动检查更新",
+                "默认关闭；打开后每次启动静默查一次，只有真的有新版本才提示你",
+                AppServices.Settings.Get("update.autoCheck", false),
+                v =>
+                {
+                    AppServices.Settings.Set("update.autoCheck", v);
+                    Ui.Notifications.Toast(v ? "已打开：启动时会自动检查更新" : "已关闭自动检查更新", 3);
+                })));
+
+        col.Children.Add(resultBox);
 
         col.Children.Add(UiKit.Section("原则",
             UiKit.Row("↩", "一切可撤销", "整理有历史，删除有 10 秒撤销", null),
             UiKit.Row("🔘", "一切可关闭", "每个模块、每个动效、每个热键都能关", null),
             UiKit.Row("🔒", "数据在你本机", "不上传、不统计、不追踪", null),
             UiKit.Row("🧬", "不注入其它程序", "桌面层用普通窗口实现，卸载即干净", null),
-            UiKit.Row("🚫", "永久不做", "广告、推广位、系统右键菜单注入、基础功能付费墙", null)));
+            UiKit.Row("🚫", "永久不做", "广告、推广位、系统右键菜单注入、基础功能付费墙", null),
+            UiKit.Row(Icons.Upload, "联网只有两件事", "查天气（默认关）与检查更新（点了才查）；都不上传任何本机信息", null)));
 
         col.Children.Add(UiKit.Section("环境",
-            UiKit.Row("🖥", "系统", Environment.OSVersion.ToString(), null),
+            UiKit.Row(Icons.Monitor, "系统", WindowsName(), null),
             UiKit.Row("⚙", "运行时", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, null),
-            UiKit.Row("📂", "数据目录", AppPaths.DataRoot, null),
+            UiKit.Row(Icons.Folder, "数据目录", AppPaths.DataRoot, UiKit.Btn("打开", () => OpenUrl(AppPaths.DataRoot))),
+            UiKit.Row(Icons.Globe, "项目主页 / 反馈", Updater.ProjectUrl, UiKit.Btn("打开", () => OpenUrl(Updater.ProjectUrl))),
             UiKit.ActionRow("🎬", "重新查看引导", "下次启动会重新显示引导页", "重置", () =>
             {
                 AppServices.Settings.Set("onboarding.done", false);
                 Ui.Notifications.Toast("已重置，下次启动会重新引导", 4);
             })));
         return col;
+    }
+
+    /// <summary>"Microsoft Windows NT 10.0.22631.0" 这种给开发看的东西要翻译成人话。</summary>
+    private static string WindowsName()
+    {
+        var v = Environment.OSVersion.Version;
+        var build = v.Build;
+        var name = build >= 22000 ? "Windows 11" : build >= 10240 ? "Windows 10" : "Windows";
+        return $"{name}（内部版本 {build}）";
+    }
+
+    private static string LastCheckText()
+    {
+        var last = AppServices.Settings.Get<DateTimeOffset?>("update.lastCheck", null);
+        return last is { } at ? $"上次检查：{at.LocalDateTime:yyyy-MM-dd HH:mm}" : "还没有检查过更新";
+    }
+
+    private static string Shorten(string text, int max)
+    {
+        var flat = text.Replace("\r", " ").Replace("\n", " ").Trim();
+        while (flat.Contains("  ")) flat = flat.Replace("  ", " ");
+        return flat.Length <= max ? flat : flat[..max] + "…";
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex) { Ui.Notifications.Toast("打开失败：" + ex.Message); }
     }
 }

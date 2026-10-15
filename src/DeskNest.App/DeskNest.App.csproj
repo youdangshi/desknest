@@ -6,6 +6,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>DeskNest.App</RootNamespace>
     <AssemblyName>DeskNest</AssemblyName>
+    <!-- 版本号：关于页与「检查更新」都用它；发版时改这里一处即可 -->
+    <Version>1.1.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- 应用图标：矢量绘制后打包成 7 个尺寸（16/24/32/48/64/128/256）的 .ico -->
     <ApplicationIcon>Assets\desknest.ico</ApplicationIcon>

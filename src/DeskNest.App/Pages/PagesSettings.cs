@@ -15,9 +15,6 @@ namespace DeskNest.App.Pages;
 /// </summary>
 public static class AppearancePage
 {
-    private static readonly string[] Schemes = { "FollowSystem", "Dark", "Light", "PureBlack", "EyeCare" };
-    private static readonly string[] Materials = { "Acrylic", "Mica", "Solid" };
-
     public static UIElement Build(MainWindow host)
     {
         var col = UiKit.Col();
@@ -107,9 +104,9 @@ public static class AppearancePage
     {
         var tokens = read();
         return UiKit.Section(title,
-            UiKit.ComboRow("🌗", "配色", "跟随系统 / 深色 / 浅色 / 纯黑 / 护眼", Schemes, tokens.Scheme.ToString(),
+            UiKit.ComboRow("🌗", "配色", "跟随系统 / 深色 / 浅色 / 纯黑 / 护眼", UiOptions.Schemes, tokens.Scheme.ToString(),
                 v => Save(prefix, read, tokens => tokens.Scheme = Enum.Parse<ColorScheme>(v), host, rebuild: true)),
-            UiKit.ComboRow("🪟", "材质", "亚克力最通透，纯色最省资源", Materials, tokens.Material.ToString(),
+            UiKit.ComboRow("🪟", "材质", "亚克力最通透，纯色最省资源", UiOptions.Materials, tokens.Material.ToString(),
                 v => Save(prefix, read, t => t.Material = Enum.Parse<MaterialKind>(v), host)),
             UiKit.SliderRow("💧", "材质强度", null, 0.1, 1.0, tokens.MaterialIntensity,
                 v => Save(prefix, read, t => t.MaterialIntensity = Math.Round(v, 2), host),
@@ -296,7 +293,7 @@ public static class PetPage
                 if (int.TryParse(v, out var fps)) { pet.FpsLimit = fps; Save(pet); }
             }),
             UiKit.ComboRow("📌", "层级", "总在最前 / 贴桌面层 / 空闲才出现",
-                new[] { "Always", "OnDesktop", "WhenIdle" }, pet.TopmostMode, v => { pet.TopmostMode = v; Save(pet); })));
+                UiOptions.PetLayers, pet.TopmostMode, v => { pet.TopmostMode = v; Save(pet); })));
 
         var packRows = new List<UIElement>();
         PetPackStore.EnsureBuiltin();
