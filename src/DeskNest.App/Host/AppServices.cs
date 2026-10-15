@@ -27,7 +27,8 @@ public static class AppServices
 
     public static event Action? RestartNeeded;
 
-    public static void Initialize()
+    /// <summary>初始化服务。startBackgroundWork=false 时只建对象、不启动索引/采样（供自动化测试用）。</summary>
+    public static void Initialize(bool startBackgroundWork = true)
     {
         AppPaths.EnsureCreated();
         Log.Info("========== 桌巢启动 ==========");
@@ -51,7 +52,7 @@ public static class AppServices
         ApplyPetSettings();
 
         Modules = new ModuleHost(Settings, new ModuleContext());
-        Modules.Scan();
+        if (startBackgroundWork) Modules.Scan();
 
         // 主题令牌从设置恢复
         Ui.Theme.Apply(new Ui.ThemeTokens
@@ -65,12 +66,15 @@ public static class AppServices
         });
 
         // 后台任务
-        if (Settings.Get("search.enabled", true)) Search.StartIndexing(SearchRoots());
-        if (Settings.Get("usage.track", true)) Usage.Start();
-        if (Settings.Get("modules.PerfMonitor", false)) Perf.Start();
-        if (Settings.Get("ai.enabled", false)) AiBridge.Start();
-        Power.Apply(Power.Plan);
-        Power.Event += e => Ui.Notifications.Toast(e.Message);
+        if (startBackgroundWork)
+        {
+            if (Settings.Get("search.enabled", true)) Search.StartIndexing(SearchRoots());
+            if (Settings.Get("usage.track", true)) Usage.Start();
+            if (Settings.Get("modules.PerfMonitor", false)) Perf.Start();
+            if (Settings.Get("ai.enabled", false)) AiBridge.Start();
+            Power.Apply(Power.Plan);
+            Power.Event += e => Ui.Notifications.Toast(e.Message);
+        }
         if (Repo.Pet().AiAskEnabled) AttachKeyboardFollow();
     }
 

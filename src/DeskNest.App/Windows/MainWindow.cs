@@ -20,6 +20,12 @@ public sealed class MainWindow : Window
     private readonly Dictionary<string, (string Title, string Glyph, Func<MainWindow, UIElement> Build)> _pages = new();
     private string _current = "overview";
 
+    /// <summary>最近一次页面构建的错误（自动化冒烟测试用；正常为 null）。</summary>
+    public string? LastPageError { get; private set; }
+
+    /// <summary>所有已注册页面的键（自动化测试用）。</summary>
+    public IReadOnlyCollection<string> PageKeys => _pages.Keys;
+
     public MainWindow()
     {
         Title = "桌巢 DeskNest";
@@ -191,12 +197,14 @@ public sealed class MainWindow : Window
             return;
         }
         _current = page;
+        LastPageError = null;
         try
         {
             _contentHost.Child = UiKit.Scroll(entry.Build(this));
         }
         catch (Exception ex)
         {
+            LastPageError = $"{page}: {ex.Message}";
             Log.Error($"页面构建失败 {page}：{ex.Message}");
             _contentHost.Child = UiKit.Col(
                 UiKit.Text("这个页面加载失败：" + ex.Message, 13),
