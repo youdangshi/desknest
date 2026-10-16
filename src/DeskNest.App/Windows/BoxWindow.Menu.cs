@@ -12,6 +12,20 @@ namespace DeskNest.App.Windows;
 
 public sealed partial class BoxWindow
 {
+    /// <summary>菜单字号：比正文（13）大一档，中文笔画才不会在 1080p 上糊成一团。</summary>
+    private const double MenuFontSize = 14;
+
+    /// <summary>菜单每行高度：行距松一点，扫读更快。</summary>
+    private const double MenuRowHeight = 30;
+
+    /// <summary>
+    /// 菜单文字色**由它自己的底色算出来**（深底取近白、浅底取近黑），而不是直接用主题前景色。
+    /// 主题前景色是配"卡片"的，一旦菜单弹出层的底色来自另一套配色就会撞色成"深底深字"——
+    /// 用户截图里"根本看不清选项是什么"就是这个原因。
+    /// </summary>
+    private static Brush MenuTextBrush(ThemeTokens t) =>
+        new SolidColorBrush(Contrast.BestForegroundOn(t.CardColor));
+
     private void ShowBoxMenu()
     {
         var menu = new ContextMenu();
@@ -235,7 +249,7 @@ public sealed partial class BoxWindow
         {
             Header = header,
             IsEnabled = action is not null && enabled,
-            Foreground = danger ? Theme.Desktop.DangerBrush : Theme.Desktop.ForegroundBrush
+            Foreground = danger ? Theme.Desktop.DangerBrush : MenuTextBrush(Theme.Desktop)
         };
         if (gesture is not null) mi.InputGestureText = gesture;
         if (checkable)
@@ -257,7 +271,7 @@ public sealed partial class BoxWindow
         {
             Header = header,
             Background = Theme.Desktop.CardBrush,
-            Foreground = Theme.Desktop.ForegroundBrush
+            Foreground = MenuTextBrush(Theme.Desktop)
         };
         foreach (var child in children)
         {
@@ -273,8 +287,11 @@ public sealed partial class BoxWindow
     {
         var t = Theme.Desktop;
         menu.Background = t.CardBrush;
-        menu.Foreground = t.ForegroundBrush;
-        menu.FontSize = Tokens.FontBody;
+        menu.Foreground = MenuTextBrush(t);
+        // 13px 的中文菜单项在 1080p 上笔画会糊成一片（用户实测"根本看不清选项是什么"；
+        // 实测底色 #28282E + 近白字的对比度其实是 12:1，问题不在对比度而在字号/行距），
+        // 所以菜单单独放大一档并给每行留出更松的行高。
+        menu.FontSize = MenuFontSize;
         menu.Padding = new Thickness(Tokens.Space4);
         menu.BorderBrush = t.BorderBrush;
         menu.BorderThickness = new Thickness(1);
@@ -298,7 +315,10 @@ public sealed partial class BoxWindow
             if (entry is not System.Windows.Controls.MenuItem mi) continue;
             var isDanger = mi.Foreground is System.Windows.Media.SolidColorBrush brush && brush.Color == danger;
             mi.Background = t.CardBrush;
-            if (!isDanger) mi.Foreground = t.ForegroundBrush;
+            if (!isDanger) mi.Foreground = MenuTextBrush(t);
+            // 每行都放高一点、给足内边距：中文小字挤在一起是最主要的"看不清"来源
+            mi.Padding = new Thickness(Tokens.Space6, 7, Tokens.Space6, 7);
+            mi.MinHeight = MenuRowHeight;
             if (mi.Items.Count > 0) PaintItems(mi.Items, t);
         }
     }

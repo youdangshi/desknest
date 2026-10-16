@@ -39,11 +39,13 @@ public static class BoxesPage
         var col = UiKit.Col();
         col.Children.Add(UiKit.PageHeader("收纳盒", "桌面上的分类容器。文件会被移动进盒子的存储目录，删除盒子时会自动还原。"));
 
+        // 原则：**新建盒子只建盒子，绝不顺手搬用户的文件**。
+        // 整理文件是另一个动作，必须由用户明确发起，且在「整理与规则」里有预览、可回滚。
         col.Children.Add(UiKit.Section("新建",
-            UiKit.ActionRow("📁", "文件夹归集", "在桌面按类型建文件夹，文件真的收进去（习惯用文件夹管理的人）", "新建",
-                () => NewBoxDialog(host, folderMode: true)),
-            UiKit.ActionRow("🧲", "桌面分区（推荐）", "文件收进桌面上的盒子，桌面不留文件夹，一眼看到分类", "新建",
-                () => NewBoxDialog(host, folderMode: false), true)));
+            UiKit.ActionRow("🧲", "新建收纳盒", "只建一个空盒子，不会动你桌面上任何文件", "新建",
+                () => NewBoxDialog(host), true),
+            UiKit.ActionRow("🧹", "把桌面文件收进来", "这一步才会移动文件：先去「整理与规则 → 一键整理」，可以先预览再执行，随时能回滚", "去整理",
+                () => { host.NavigateTo("organize"); Ui.Notifications.Toast("在这里点「一键整理」——会先给你预览，确认后才动文件", 6); })));
 
         var cards = new List<UIElement>();
         foreach (var box in AppServices.Repo.Boxes())
@@ -159,93 +161,111 @@ public static class BoxesPage
         _ => "普通盒：文件会被移动进存储目录"
     };
 
-    public static void NewBoxDialog(MainWindow host, bool folderMode)
+    /// <summary>
+    /// 新建收纳盒：**只创建一个空盒子**，不移动任何文件。
+    /// （v1.1 之前这里会顺手跑一次"桌面分区整理"，把用户桌面的文件按类型搬进存储目录——
+    /// 用户点"新建"却丢了桌面文件，就是这个设计造成的，已彻底去掉。）
+    /// </summary>
+    public static void NewBoxDialog(MainWindow host)
     {
-        var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        var nameInput = UiKit.Input(folderMode ? "桌面整理" : "新收纳盒", _ => { }, 220);
-        var shortcutsOn = false;
-        var includeShortcuts = UiKit.Toggle(false, v => shortcutsOn = v);
-        var previewText = UiKit.Text("", 11.5, secondary: true);
+        var nameInput = UiKit.Input("新收纳盒", _ => { }, 220);
+        var folderInput = UiKit.Input("", _ => { }, 220);
+        var typeChoice = "普通盒";
+        var typeRow = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var kind in new[] { "普通盒", "映射盒（只存路径，不动文件）" })
+        {
+            var captured = kind;
+            var button = UiKit.Btn(kind, () =>
+            {
+                typeChoice = captured;
+                foreach (var child in typeRow.Children.OfType<Wpf.Ui.Controls.Button>())
+                    child.Appearance = (child.Content as string) == captured
+                        ? Wpf.Ui.Controls.ControlAppearance.Primary
+                        : Wpf.Ui.Controls.ControlAppearance.Secondary;
+            });
+            typeRow.Children.Add(button);
+        }
+        var targetHint = UiKit.Text("", 11.5, secondary: true);
+        void RefreshTarget()
+        {
+            var name = string.IsNullOrWhiteSpace(nameInput.Text) ? "新收纳盒" : nameInput.Text.Trim();
+            targetHint.Text = typeChoice.StartsWith("映射")
+                ? "只登记这些文件/文件夹的路径，不搬动它们"
+                : "盒子存储位置：" + Path.Combine(AppPaths.DefaultManagedRoot, BoxWindow.SanitizeName(name)) + "\n不会自动搬走桌面上的任何文件";
+        }
+        nameInput.TextChanged += (_, _) => RefreshTarget();
+        RefreshTarget();
 
         var win = new Window
         {
-            Title = folderMode ? "新建（文件夹归集）" : "新建（桌面分区）",
-            Width = 520,
-            Height = 380,
+            Title = "新建收纳盒",
+            Width = 560,
+            Height = 460,
+            MinHeight = 380,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             Background = Theme.Current.BackgroundBrush,
             Foreground = Theme.Current.ForegroundBrush
         };
 
-        var createBtn = UiKit.Btn("开始整理", () => { }, true);
+        var createBtn = UiKit.Btn("创建空盒子", () => { }, true);
         var cancelBtn = UiKit.Btn("取消", () => win.Close());
-        var previewBtn = UiKit.Btn("先预览（不执行）", () =>
-        {
-            var plan = BuildPlan(desktopPath, shortcutsOn, folderMode);
-            var lines = string.Join("\n", plan.Items.Take(20).Select(i => Path.GetFileName(i.SourcePath) + "  →  " + i.Category));
-            previewText.Text = $"将整理 {plan.Items.Count} 项，保留 {plan.Skipped.Count} 项：";
-            MessageBox.Show($"将整理 {plan.Items.Count} 项，保留 {plan.Skipped.Count} 项\n\n{lines}", "预览结果",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-        });
 
         createBtn.Click += (_, _) =>
         {
             try
             {
                 var name = string.IsNullOrWhiteSpace(nameInput.Text) ? "新收纳盒" : nameInput.Text.Trim();
-                if (folderMode)
+                // 双屏用户：在哪个屏幕上点"新建"，盒子就开在那块屏上（可在「多显示器」页关掉）
+                var spot = NextBoxSpot();
+                var mapped = typeChoice.StartsWith("映射");
+                var box = new BoxRecord
                 {
-                    var plan = BuildPlan(desktopPath, shortcutsOn, true);
-                    var run = AppServices.Organizer.Execute(plan, "manual-folder");
-                    Ui.Notifications.Toast($"已在桌面按类型建好文件夹并整理 {run.MovedCount} 项", 8,
-                        action: () => AppServices.Organizer.Undo(run));
+                    Name = name,
+                    Kind = mapped ? BoxKind.Mapped : BoxKind.Normal,
+                    MarginX = spot.X,
+                    MarginY = spot.Y
+                };
+                if (mapped)
+                {
+                    box.MappedPath = string.IsNullOrWhiteSpace(folderInput.Text)
+                        ? AppPaths.DefaultManagedRoot
+                        : folderInput.Text.Trim();
                 }
                 else
                 {
-                    // 双屏用户：在哪个屏幕上点"新建"，盒子就开在那块屏上（可在「多显示器」页关掉）
-                    var spot = NextBoxSpot();
-                    var box = new BoxRecord
-                    {
-                        Name = name,
-                        Kind = BoxKind.Normal,
-                        MarginX = spot.X,
-                        MarginY = spot.Y
-                    };
                     box.StorageRoot = Path.Combine(AppPaths.DefaultManagedRoot, BoxWindow.SanitizeName(box.Name));
-                    AppServices.Repo.Upsert(box);
-                    (Application.Current as App)?.Desktop.ShowBox(box);
-
-                    var plan = BuildPlan(desktopPath, shortcutsOn, false);
-                    if (plan.Items.Count > 0)
-                    {
-                        var run = AppServices.Organizer.Execute(plan, "manual-partition");
-                        Ui.Notifications.Toast($"已把 {run.MovedCount} 个文件分好类", 8,
-                            action: () => AppServices.Organizer.Undo(run));
-                    }
                 }
+                AppServices.Repo.Upsert(box);
+                (Application.Current as App)?.Desktop.ShowBox(box);
+                Ui.Notifications.Toast($"已创建空盒子「{name}」——没有移动任何文件；要把桌面文件收进来请去「整理与规则 → 一键整理」", 8);
                 win.Close();
-                (Application.Current as App)?.Desktop.ReloadBoxes();
                 host.RefreshCurrent();
             }
             catch (Exception ex)
             {
-                Ui.Notifications.Toast("整理失败：" + ex.Message);
+                Ui.Notifications.Toast("创建失败：" + ex.Message);
             }
         };
 
-        var body = new List<UIElement>
-        {
-            UiKit.PageHeader(folderMode ? "文件夹归集" : "桌面分区",
-                folderMode ? "在桌面按类型建文件夹，把文件真的收进去。" : "文件收进桌面上的盒子，桌面不留文件夹（推荐）。"),
+        // 内容可滚动、按钮固定在底部：内容再长也不会像以前那样被窗口边切掉半截
+        var settings = UiKit.Col(
+            UiKit.PageHeader("新建收纳盒", "只创建一个空盒子；不会移动你桌面上的任何文件。"),
             UiKit.Section("设置",
-                UiKit.Row("🏷", "名称", folderMode ? "（文件夹按类型自动命名）" : "给盒子起个名字", nameInput),
-                UiKit.Row("🔗", "也收纳快捷方式", "默认不收：常用图标留在桌面更好找", includeShortcuts),
-                UiKit.Row("👀", "预览", "先看看会动哪些文件，再决定", previewBtn),
-                UiKit.Row("📋", "结果", null, previewText)),
-            UiKit.Row("", "", null, UiKit.Row(createBtn, cancelBtn))
+                UiKit.Row("🏷", "名称", "给盒子起个名字", nameInput),
+                UiKit.Row("📦", "类型", "普通盒＝文件会被移动进存储目录；映射盒＝只登记路径、一个文件都不动", typeRow),
+                UiKit.Row("📂", "映射到哪个文件夹（仅映射盒）", "留空＝默认存储目录", folderInput),
+                UiKit.Row("📍", "去向", null, targetHint)),
+            UiKit.Banner(BannerKind.Info, "想整理桌面文件？那是另一个动作：去「整理与规则 → 一键整理」，那里可以先预览、执行后还能回滚。"));
+        var footer = new Border
+        {
+            Padding = new Thickness(16, 8, 16, 12),
+            Child = UiKit.Row(createBtn, cancelBtn)
         };
-        var stack = UiKit.Col(body.ToArray());
-        win.Content = UiKit.Scroll(stack);
+        var layout = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(footer, Dock.Bottom);
+        layout.Children.Add(footer);
+        layout.Children.Add(UiKit.Scroll(settings));
+        win.Content = layout;
         win.ShowDialog();
     }
 
