@@ -56,4 +56,62 @@ public sealed class BoxService
         Log.Info($"删除盒子「{box.Name}」结束：还原 {restored} 项，失败 {failed} 项，记录仍在={stillThere}");
         return new DeleteResult(restored, failed, stillThere);
     }
+
+    /// <summary>
+    /// 把 <paramref name="other"/> 并进 <paramref name="keep"/> 所在的组：两个盒子占同一块位置，
+    /// 用标题栏标签切换。抽出来是为了能写测试——合并涉及三处写入（组、本盒、被并入的盒），
+    /// 顺序错了就会出现"两个盒子叠在一起、谁也点不到"。
+    /// </summary>
+    public BoxGroupRecord MergeInto(BoxRecord keep, BoxRecord other)
+    {
+        if (keep.Id == other.Id) throw new InvalidOperationException("不能把盒子并进它自己");
+
+        var group = keep.GroupId is null
+            ? null
+            : _repo.Groups().FirstOrDefault(g => g.Id == keep.GroupId);
+        if (group is null)
+        {
+            group = new BoxGroupRecord
+            {
+                Name = keep.Name + " 组",
+                MemberIds = keep.Id,
+                ActiveMemberId = keep.Id,
+                MarginX = keep.MarginX,
+                MarginY = keep.MarginY,
+                Width = keep.Width,
+                Height = keep.Height
+            };
+            keep.GroupId = group.Id;
+            _repo.Upsert(keep);
+        }
+
+        var members = group.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (!members.Contains(other.Id)) members.Add(other.Id);
+        group.MemberIds = string.Join(";", members);
+        if (string.IsNullOrEmpty(group.ActiveMemberId) || !members.Contains(group.ActiveMemberId))
+            group.ActiveMemberId = keep.Id;
+        _repo.Upsert(group);
+
+        // 被并入的盒子挪到组的位置与尺寸上，这样切换时不会跳位
+        other.GroupId = group.Id;
+        other.MarginX = group.MarginX;
+        other.MarginY = group.MarginY;
+        if (group.Width > 0) other.Width = group.Width;
+        if (group.Height > 0) other.Height = group.Height;
+        _repo.Upsert(other);
+
+        Log.Info($"已把「{other.Name}」并进「{group.Name}」（成员 {members.Count} 个，当前显示 {group.ActiveMemberId}）");
+        return group;
+    }
+
+    /// <summary>组里当前该显示的盒子 id（组没配置或成员不在组里时返回空）。</summary>
+    public string? ActiveMemberOf(string? groupId)
+    {
+        if (string.IsNullOrWhiteSpace(groupId)) return null;
+        var group = _repo.Groups().FirstOrDefault(g => g.Id == groupId);
+        if (group is null) return null;
+        var members = group.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries);
+        if (members.Length == 0) return null;
+        return members.Contains(group.ActiveMemberId) ? group.ActiveMemberId : members[0];
+    }
 }

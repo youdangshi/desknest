@@ -176,4 +176,70 @@ public sealed class DeleteBoxTests : IDisposable
         Assert.False(outcome.StillInDatabase);
         Assert.Equal(keep.Id, Assert.Single(_repo.Boxes()).Id);
     }
+
+    // ---------- 合并盒子（多盒叠一处） ----------
+
+    [Fact]
+    public void 合并盒子_建组_两个盒子都进组_并且只显示选中的那个()
+    {
+        var main = new BoxRecord { Name = "工作", MarginX = 100, MarginY = 120, Width = 320, Height = 420 };
+        var second = new BoxRecord { Name = "娱乐", MarginX = 800, MarginY = 600, Width = 200, Height = 200 };
+        _repo.Upsert(main);
+        _repo.Upsert(second);
+
+        var group = _boxes.MergeInto(main, second);
+
+        // 组里两个成员，且当前显示的是发起合并的那个盒子
+        Assert.Equal(2, group.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries).Length);
+        Assert.Equal(main.Id, group.ActiveMemberId);
+        Assert.Equal(group.Id, _repo.Box(second.Id)!.GroupId);
+        Assert.Equal(group.Id, _repo.Box(main.Id)!.GroupId);
+
+        // 被并入的盒子要挪到组的位置与尺寸上（否则切换成员时会跳位）
+        var moved = _repo.Box(second.Id)!;
+        Assert.Equal(100, moved.MarginX);
+        Assert.Equal(120, moved.MarginY);
+        Assert.Equal(320, moved.Width);
+
+        // 关键：同一个组里**只能有一个盒子处于显示状态**，否则两个盒子叠在一起谁也点不到
+        Assert.Equal(main.Id, _boxes.ActiveMemberOf(group.Id));
+        Assert.Null(_boxes.ActiveMemberOf(null));
+    }
+
+    [Fact]
+    public void 合并盒子_切换成员后_显示状态跟着变()
+    {
+        var main = new BoxRecord { Name = "工作" };
+        var second = new BoxRecord { Name = "娱乐" };
+        _repo.Upsert(main);
+        _repo.Upsert(second);
+        var group = _boxes.MergeInto(main, second);
+
+        group.ActiveMemberId = second.Id;
+        _repo.Upsert(group);
+
+        Assert.Equal(second.Id, _boxes.ActiveMemberOf(group.Id));
+    }
+
+    [Fact]
+    public void 合并盒子_重复合并同一个盒子不会出现重复成员()
+    {
+        var main = new BoxRecord { Name = "工作" };
+        var second = new BoxRecord { Name = "娱乐" };
+        _repo.Upsert(main);
+        _repo.Upsert(second);
+
+        _boxes.MergeInto(main, second);
+        var again = _boxes.MergeInto(main, second);
+
+        Assert.Equal(2, again.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries).Length);
+    }
+
+    [Fact]
+    public void 合并盒子_不能把自己并进自己()
+    {
+        var main = new BoxRecord { Name = "工作" };
+        _repo.Upsert(main);
+        Assert.Throws<InvalidOperationException>(() => _boxes.MergeInto(main, main));
+    }
 }

@@ -598,40 +598,18 @@ public sealed partial class BoxWindow
     {
         try
         {
-            var group = _box.GroupId is null
-                ? null
-                : AppServices.Repo.Groups().FirstOrDefault(g => g.Id == _box.GroupId);
-            if (group is null)
+            // 数据部分交给可测试的 BoxService（组、本盒、被并入的盒三处写入要一致）
+            var group = AppServices.Boxes.MergeInto(_box, other);
+            if (App.Current is App app)
             {
-                group = new BoxGroupRecord
-                {
-                    Name = _box.Name + " 组",
-                    MemberIds = _box.Id,
-                    ActiveMemberId = _box.Id,
-                    MarginX = _box.MarginX,
-                    MarginY = _box.MarginY,
-                    Width = _box.Width,
-                    Height = _box.Height
-                };
-                _box.GroupId = group.Id;
-                AppServices.Repo.Upsert(_box);
+                app.Desktop.ReloadBoxes();
+                app.Desktop.SwitchGroupTo(group.Id, group.ActiveMemberId);   // 只留当前选中的那个盒子可见
             }
-
-            var members = group.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
-            if (!members.Contains(other.Id)) members.Add(other.Id);
-            group.MemberIds = string.Join(";", members);
-            AppServices.Repo.Upsert(group);
-
-            // 被并入的盒子挪到组的位置上，然后重新加载，让它俩真的叠在一起
-            other.GroupId = group.Id;
-            other.MarginX = group.MarginX;
-            other.MarginY = group.MarginY;
-            AppServices.Repo.Upsert(other);
-            if (App.Current is App app) app.Desktop.ReloadBoxes();
-            Ui.Notifications.Toast($"已把「{other.Name}」并进「{group.Name}」（点标题栏标签或滚轮切换）", 6);
+            Ui.Notifications.Toast($"已把「{other.Name}」并进「{group.Name}」，点标题栏标签或滚轮切换", 6);
         }
         catch (Exception ex)
         {
+            Log.Error($"合并盒子失败：{ex}");
             Ui.Notifications.Toast("合并失败：" + ex.Message);
         }
     }

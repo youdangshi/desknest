@@ -52,14 +52,29 @@ public sealed class DesktopWindows
             try { CloseSafely(_boxes[id]); } catch { }
             _boxes.Remove(id);
         }
+        // 组必须先算出来：同一组的盒子占同一块位置，**只显示当前选中的那个**，
+        // 否则合并之后两个盒子会叠在一起，谁也点不到（这是"合并"功能最容易踩的坑）。
+        var activeByGroup = AppServices.Repo.Groups()
+            .ToDictionary(g => g.Id, g => AppServices.Boxes.ActiveMemberOf(g.Id), StringComparer.OrdinalIgnoreCase);
+
         foreach (var box in AppServices.Repo.Boxes())
         {
-            if (box.IsHidden)
+            var keepVisible = true;
+            if (box.GroupId is { } gid && activeByGroup.TryGetValue(gid, out var active) && active is not null)
+                keepVisible = string.Equals(active, box.Id, StringComparison.OrdinalIgnoreCase);
+
+            if (box.IsHidden || !keepVisible)
             {
                 if (_boxes.TryGetValue(box.Id, out var hidden)) hidden.Hide();
                 continue;
             }
             ShowBox(box);
+            if (_boxes.TryGetValue(box.Id, out var win))
+            {
+                win.Show();
+                win.ReloadItems();
+                win.RefreshGroupTabsPublic();   // 组内标签要重新画，否则并进来的新成员不出现在标签条上
+            }
         }
     }
 
