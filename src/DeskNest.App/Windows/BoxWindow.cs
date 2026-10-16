@@ -222,6 +222,10 @@ public sealed partial class BoxWindow : Window
 
     private Button HeaderButton(string glyph, string tip, Action action)
     {
+        // 标题栏按钮必须"任何壁纸下都看得见"：
+        // ① 用完整前景色而不是次要色 ② 加一层描边/阴影 ③ 给一个极淡的自身底色当"芯片"，
+        // 这样即使盒子卡片很透明（用户把透明度调到 0.3），按钮依然是清楚的一块。
+        var foreground = Theme.Desktop.ForegroundBrush;
         var b = new Button
         {
             Content = glyph,
@@ -230,9 +234,10 @@ public sealed partial class BoxWindow : Window
             FontSize = 12,
             Padding = new Thickness(0),
             Margin = new Thickness(2, 0, 0, 0),
-            Background = Brushes.Transparent,
+            Background = new SolidColorBrush(Theme.Desktop.Foreground) { Opacity = 0.10 },
             BorderThickness = new Thickness(0),
-            Foreground = Theme.Desktop.SecondaryBrush,
+            Foreground = foreground,
+            Effect = UiKit.LegibleTextShadow(),
             Cursor = Cursors.Hand,
             ToolTip = tip
         };
@@ -253,6 +258,10 @@ public sealed partial class BoxWindow : Window
         _iconPanel.Visibility = _box.ViewMode == "Icon" ? Visibility.Visible : Visibility.Collapsed;
         _listPanel.Visibility = _box.ViewMode == "Icon" ? Visibility.Collapsed : Visibility.Visible;
         _titleText.Text = _box.Name;
+        // 标题栏给一条极淡的底：卡片透明（0.3）时，文字直接压在壁纸上会很糊；
+        // 这条底让标题与按钮永远有一致的背景，配合 LegibleTextShadow 就能保证可读。
+        _titleBar.Background = new SolidColorBrush(Theme.Desktop.Foreground) { Opacity = 0.08 };
+        _status.Foreground = Theme.Desktop.ForegroundBrush;
         ApplyTitleStyle();
     }
 

@@ -96,6 +96,36 @@ Check("组件组里两个成员、当前显示发起合并的那个",
 Check("被并入的组件挪到同一位置与尺寸",
     () => repo.Widgets().First(w => w.Id == w2.Id).X == 100 && repo.Widgets().First(w => w.Id == w2.Id).Width == 240);
 
+Console.WriteLine("== 拖动吸附对齐 ==");
+var snapA = new DeskNest.Core.Services.WindowSnap.Rect(300, 200, 320, 420);
+var near = DeskNest.Core.Services.WindowSnap.Snap(new DeskNest.Core.Services.WindowSnap.Rect(305, 204, 200, 200), new[] { snapA }, 8);
+Check("左边缘差 5 像素会被吸齐", () => near.SnappedX && Math.Abs(near.X - 300) < 0.01);
+Check("上边缘差 4 像素会被吸齐", () => near.SnappedY && Math.Abs(near.Y - 200) < 0.01);
+var farAway = DeskNest.Core.Services.WindowSnap.Snap(new DeskNest.Core.Services.WindowSnap.Rect(500, 600, 200, 200), new[] { snapA }, 8);
+Check("离得远不动它", () => !farAway.SnappedX && !farAway.SnappedY);
+var rightEdge = DeskNest.Core.Services.WindowSnap.Snap(new DeskNest.Core.Services.WindowSnap.Rect(617, 200, 200, 200), new[] { snapA }, 8);
+Check("右边缘差 3 像素会被吸齐（左贴对方右）", () => rightEdge.SnappedX && Math.Abs(rightEdge.X - 620) < 0.01);
+var screenSnap = DeskNest.Core.Services.WindowSnap.Snap(new DeskNest.Core.Services.WindowSnap.Rect(4, 3, 200, 200),
+    new[] { new DeskNest.Core.Services.WindowSnap.Rect(0, 0, 2048, 1152) }, 8);
+Check("屏幕边也能吸（贴左上角）", () => screenSnap.SnappedX && screenSnap.SnappedY);
+
+Console.WriteLine("== 解散盒子：文件回桌面 ==");
+var deskForTest = Path.Combine(root, "desktop");
+Directory.CreateDirectory(deskForTest);
+var boxToDissolve = new BoxRecord { Name = "待解散", StorageRoot = Path.Combine(root, "store-dis") };
+repo.Upsert(boxToDissolve);
+Directory.CreateDirectory(boxToDissolve.StorageRoot!);
+var fileInBox = Path.Combine(boxToDissolve.StorageRoot!, "会被还回来的.txt");
+File.WriteAllText(fileInBox, "x");
+repo.Upsert(new ItemRecord
+{
+    BoxId = boxToDissolve.Id, Kind = ItemKind.File, DisplayName = "会被还回来的.txt",
+    SourcePath = Path.Combine(deskForTest, "会被还回来的.txt"), StoredPath = fileInBox, Ext = ".txt"
+});
+var dissolved = boxes.DissolveToDesktop(boxToDissolve, deskForTest);
+Check("解散后盒子记录消失", () => !dissolved.StillInDatabase && repo.Box(boxToDissolve.Id) is null);
+Check("文件确实回到了桌面目录", () => File.Exists(Path.Combine(deskForTest, "会被还回来的.txt")));
+
 Console.WriteLine("== 任何颜色下都要看得清（人眼可读性） ==");
 // 1) 填色底（主按钮/徽标/选中项）上的文字：必须按底色亮度自动取白或近黑
 var accents = new[]

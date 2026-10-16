@@ -124,6 +124,23 @@ public sealed class OrganizeEngine
                     AddedAt = DateTimeOffset.Now
                 });
             }
+            else if (BoxService.IsUnderManagedRoot(storedPath))
+            {
+                // 桌面分区模式：文件被搬进了存储目录，**必须登记到盒子里**，否则界面上看不到它，
+                // 用户会以为"文件收纳没了"（真实发生过的缺陷）。没指定盒子就按分类放一个盒子。
+                var home = EnsureCategoryBox(it.Category, storedPath);
+                _repo.Upsert(new ItemRecord
+                {
+                    BoxId = home,
+                    Kind = Directory.Exists(storedPath) ? ItemKind.Folder : ItemKind.File,
+                    DisplayName = Path.GetFileName(storedPath),
+                    SourcePath = it.SourcePath,
+                    StoredPath = storedPath,
+                    Ext = Path.GetExtension(storedPath).ToLowerInvariant(),
+                    SizeBytes = SafeSize(storedPath),
+                    AddedAt = DateTimeOffset.Now
+                });
+            }
             done++;
         }
 
@@ -186,5 +203,33 @@ public sealed class OrganizeEngine
         _repo.InsertRun(run);
         Log.Info($"撤销完成：还原 {restored}，失败 {failed}");
         return (restored, failed);
+    }
+
+    /// <summary>
+    /// 桌面分区模式下，为某个分类拿到（没有就新建）一个收纳盒。
+    /// 关键作用：文件被搬进存储目录后必须有归属，否则界面上完全看不到它，
+    /// 用户会以为"文件被收纳没了"（这是真实发生过的严重缺陷）。
+    /// </summary>
+    private string EnsureCategoryBox(string category, string storedPath)
+    {
+        var name = string.IsNullOrWhiteSpace(category) ? "其他" : category;
+        var root = Path.GetDirectoryName(storedPath) ?? AppPaths.DefaultManagedRoot;
+        var existing = _repo.Boxes().FirstOrDefault(b =>
+            string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Path.GetFullPath(b.StorageRoot ?? ""), Path.GetFullPath(root), StringComparison.OrdinalIgnoreCase));
+        if (existing is not null) return existing.Id;
+
+        var count = _repo.Boxes().Count;
+        var box = new BoxRecord
+        {
+            Name = name,
+            Kind = BoxKind.Normal,
+            StorageRoot = root,
+            MarginX = 200 + count * 30,
+            MarginY = 140 + count * 20
+        };
+        _repo.Upsert(box);
+        Log.Info($"桌面分区：为分类「{name}」建了收纳盒（存储 {root}）");
+        return box.Id;
     }
 }

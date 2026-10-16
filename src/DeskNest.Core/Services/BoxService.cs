@@ -159,4 +159,47 @@ public sealed class BoxService
         Log.Info($"已把组件「{other.Name}」并进「{group.Name}」（成员 {members.Count} 个）");
         return group;
     }
+
+    /// <summary>
+    /// 解散盒子：盒内文件**全部还到桌面**（不管它原来在哪），然后删掉盒子记录。
+    /// 与「删除盒子（逐个还原到原位置）」的区别：这个的结果只有一个——桌面，
+    /// 用户不用去想"它当初是从哪来的"。
+    /// </summary>
+    public DeleteResult DissolveToDesktop(BoxRecord box, string? desktopOverride = null)
+    {
+        var desktop = desktopOverride ?? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        Directory.CreateDirectory(desktop);
+        var moved = 0;
+        var failed = 0;
+        if (box.Kind != BoxKind.Mapped)
+        {
+            foreach (var item in _repo.Items(box.Id, false))
+            {
+                var path = item.StoredPath ?? item.SourcePath;
+                var result = _files.MoveTo(path, desktop);
+                if (result.Ok) moved++;
+                else
+                {
+                    failed++;
+                    Log.Warn($"解散时还原失败：{path} → 桌面（{result.Error}）");
+                }
+            }
+        }
+        _repo.DeleteBox(box.Id);
+        var stillThere = _repo.Box(box.Id) is not null;
+        Log.Info($"解散盒子「{box.Name}」：{moved} 项回到桌面，失败 {failed} 项，记录仍在={stillThere}");
+        return new DeleteResult(moved, failed, stillThere);
+    }
+
+    /// <summary>存储目录里的文件是否属于"我们自己管的"（桌面分区模式搬进去的必须登记进盒子）。</summary>
+    public static bool IsUnderManagedRoot(string path)
+    {
+        try
+        {
+            var root = Path.GetFullPath(AppPaths.DefaultManagedRoot);
+            var target = Path.GetFullPath(path);
+            return target.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
 }

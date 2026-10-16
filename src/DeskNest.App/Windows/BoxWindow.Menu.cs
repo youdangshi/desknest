@@ -54,6 +54,33 @@ public sealed partial class BoxWindow
         menu.Items.Add(Sub("更多操作", BuildMoreItems()));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("删除盒子（盒内文件还原到原位置）", DeleteBox, danger: true));
+        menu.Items.Add(Item("解散盒子（盒内文件全部回到桌面）", DissolveBox, danger: true));
+    }
+
+    /// <summary>解散：盒内文件全部丢回桌面，盒子消失。想"我不关心它原来在哪，只要回到桌面"时用这个。</summary>
+    private void DissolveBox()
+    {
+        var confirm = MessageBox.Show(this,
+            $"解散盒子「{_box.Name}」？\n\n盒内文件会全部移动到桌面（同名自动加 (1)），然后盒子消失。",
+            "解散收纳盒", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.OK) return;
+        try
+        {
+            var outcome = AppServices.Boxes.DissolveToDesktop(_box);
+            if (outcome.StillInDatabase)
+            {
+                Ui.Notifications.Toast("解散没生效：记录仍在库里，请把日志发给开发者", 8);
+                return;
+            }
+            Ui.Notifications.Toast($"已解散「{_box.Name}」，{outcome.Restored} 个文件回到桌面", 6);
+            Close();
+            if (App.Current is App app) app.Desktop.NotifyBoxClosed(_box.Id);
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"解散盒子失败：{ex}");
+            Ui.Notifications.Toast("解散失败：" + ex.Message, 8);
+        }
     }
 
     /// <summary>标题样式：标准 / 紧凑 / 悬浮 / 隐藏。盒子组里"悬浮/隐藏"会禁用——组内必须一直能看到标题栏才能切成员。</summary>

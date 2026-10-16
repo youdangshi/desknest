@@ -130,6 +130,9 @@ public static class WindowDrag
         var hwndForDrag = new System.Windows.Interop.WindowInteropHelper(window).Handle;
         if (!wasTopmost) DeskNest.Native.Win32.WindowMove.SetTemporaryTopmost(hwndForDrag, true);
 
+        // 吸附对齐用的参考矩形：其它桌面窗口 + 屏幕工作区（都是物理像素，和 PointToScreen 一致）
+        var snapTargets = CollectSnapTargets(window);
+
         Core.Log.Info($"开始拖动窗口（手动）：起点 {startLeft:0},{startTop:0}，DPI={scale:0.00}");
 
         void OnMove(object _, MouseEventArgs args)
@@ -138,8 +141,15 @@ public static class WindowDrag
             var now = handle.PointToScreen(args.GetPosition(handle));
             var dx = (now.X - startScreen.X) / scale;
             var dy = (now.Y - startScreen.Y) / scale;
-            window.Left = startLeft + dx;
-            window.Top = startTop + dy;
+            var nextLeft = startLeft + dx;
+            var nextTop = startTop + dy;
+
+            // 吸附：把窗户吸到别的盒子/屏幕边上（阈值 8 物理像素，换算成 DIP 后比较）
+            var snap = DeskNest.Core.Services.WindowSnap.Snap(
+                new DeskNest.Core.Services.WindowSnap.Rect(nextLeft * scale, nextTop * scale, window.Width * scale, window.Height * scale),
+                snapTargets);
+            window.Left = snap.SnappedX ? snap.X / scale : nextLeft;
+            window.Top = snap.SnappedY ? snap.Y / scale : nextTop;
             moved = Math.Max(moved, Math.Abs(dx) + Math.Abs(dy));
             onDragging?.Invoke(now);
         }
@@ -161,6 +171,31 @@ public static class WindowDrag
         handle.MouseMove += OnMove;
         handle.MouseLeftButtonUp += OnUp;
         handle.CaptureMouse();
+    }
+
+    /// <summary>收集吸附参考：其它可见桌面窗口的矩形 + 主屏工作区。</summary>
+    private static IReadOnlyList<DeskNest.Core.Services.WindowSnap.Rect> CollectSnapTargets(Window self)
+    {
+        var list = new List<DeskNest.Core.Services.WindowSnap.Rect>();
+        try
+        {
+            if (App.Current is App app)
+            {
+                void Add(System.Windows.Window win)
+                {
+                    if (ReferenceEquals(win, self) || !win.IsVisible) return;
+                    var hwnd = new System.Windows.Interop.WindowInteropHelper(win).Handle;
+                    if (DeskNest.Native.Win32.WindowShot.Bounds(hwnd) is not { } r) return;
+                    list.Add(new DeskNest.Core.Services.WindowSnap.Rect(r.X, r.Y, r.W, r.H));
+                }
+                foreach (var win in app.Desktop.Boxes.Values) Add(win);
+                foreach (var win in app.Desktop.Widgets.Values) Add(win);
+            }
+            if (DeskNest.Native.Win32.Monitors.Primary() is { } screen)
+                list.Add(new DeskNest.Core.Services.WindowSnap.Rect(screen.WorkX, screen.WorkY, screen.WorkWidth, screen.WorkHeight));
+        }
+        catch (Exception ex) { Core.Log.Warn("收集吸附参考失败：" + ex.Message); }
+        return list;
     }
 
     /// <summary>取元素所在显示器的缩放比例（1.0 表示 100%）。</summary>
