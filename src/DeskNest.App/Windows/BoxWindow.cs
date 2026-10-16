@@ -149,11 +149,17 @@ public sealed partial class BoxWindow : Window
     private void OnSourceInitialized()
     {
         var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        // 时机很关键：必须在窗口**第一次渲染之前**做挂载与置顶。
+        // 试过等布局完成（DispatcherPriority.Loaded）再挂，结果是窗口被重排到最上层却
+        // 一个像素都不画（层叠窗口没有重新上传画面）——看不见也点不到，比不挂更糟。
         _attachedToDesktop = DesktopLayer.Attach(hwnd);
         if (!_attachedToDesktop)
         {
-            Topmost = AppServices.Settings.Get("box.fallbackTopmost", true);
-            Log.Warn("未能挂到桌面层，已降级为普通窗口");
+            // 现在是常规路径：不挂桌面层，当"点得到、不抢焦点、不盖住别人"的普通窗口。
+            // 关键三点：① 不置顶（否则会盖住所有程序）② 不抢焦点（点它不会把别人的窗口压下去）
+            // ③ 不进任务栏。这样盒子就在桌面图标之上、普通程序之下，拖动/缩放/菜单/拖入文件都能用。
+            Topmost = false;
+            DesktopLayer.MakeNoActivate(hwnd);
         }
 
         // 把窗口的真实状态写进日志：拖动/点击出问题时，这几行能直接定位是哪一环不对

@@ -94,8 +94,14 @@ public sealed partial class WidgetWindow : Window
         SizeChanged += (_, _) => Persist();
         SourceInitialized += (_, _) =>
         {
+            // 和收纳盒一样：必须在第一次渲染之前挂载（挂晚了窗口会"看不见"）
             var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-            if (!Native.Win32.DesktopLayer.Attach(hwnd)) Topmost = AppServices.Settings.Get("widget.fallbackTopmost", true);
+            if (!Native.Win32.DesktopLayer.Attach(hwnd))
+            {
+                // 与收纳盒一致：普通窗口 + 不抢焦点（见 DesktopLayer.Attach 的说明）
+                Topmost = false;
+                Native.Win32.DesktopLayer.MakeNoActivate(hwnd);
+            }
         };
         Closed += (_, _) => _timer?.Stop();
 

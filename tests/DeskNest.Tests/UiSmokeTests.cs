@@ -9,6 +9,7 @@ namespace DeskNest.Tests;
 /// 界面冒烟测试：在 STA 线程里建一次 WPF Application + 主窗口，逐个打开所有已注册页面，
 /// 任何一个页面构建抛异常都会让测试失败（相当于"把每个设置页都点一遍"）。
 /// </summary>
+[Collection(DesktopUiCollection.Name)]
 public sealed class UiSmokeTests
 {
     [Fact]
