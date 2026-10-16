@@ -53,6 +53,7 @@ public sealed partial class BoxWindow : Window
 
         _tabStrip = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 0, 6, 0) };
         _titleText = UiKit.Text(box.Name, 13, bold: true);
+        _titleText.Effect = UiKit.LegibleTextShadow();   // 半透明卡片压在亮壁纸上时靠这层描边保 readable
 
         _titleBar = new StackPanel { Orientation = Orientation.Horizontal, Height = 30, Cursor = Cursors.SizeAll };
         _titleBar.Children.Add(new TextBlock
@@ -69,6 +70,7 @@ public sealed partial class BoxWindow : Window
         _iconPanel = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 2, 6, 6) };
         _listPanel = new StackPanel { Margin = new Thickness(4, 0, 4, 6) };
         _status = UiKit.Text("", 11, secondary: true);
+        _status.Effect = UiKit.LegibleTextShadow();
 
         var content = new StackPanel();
         content.Children.Add(_iconPanel);

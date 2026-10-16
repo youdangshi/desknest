@@ -58,7 +58,10 @@ public static class ControlStyles
         // 主按钮：一点竖向渐变 + 极淡投影，让它从一堆描边按钮里"立"起来；
         // 次要按钮保持纯色描边，避免整页都在发光。
         style.Setters.Add(new Setter(Control.BackgroundProperty, accent ? AccentFill() : Theme.Current.CardBrush));
-        style.Setters.Add(new Setter(Control.ForegroundProperty, accent ? Brushes.White : Theme.Current.ForegroundBrush));
+        // 主按钮的文字颜色按强调色的亮度自动取（浅色强调色用近黑字），见 Contrast.BestForegroundOn：
+        // 写死白字的话，用户把强调色改成浅黄/浅青就会"白底白字"。
+        style.Setters.Add(new Setter(Control.ForegroundProperty,
+            accent ? new SolidColorBrush(Contrast.BestForegroundOn(Theme.Current.Accent)) : Theme.Current.ForegroundBrush));
         style.Setters.Add(new Setter(Control.BorderBrushProperty, Theme.Current.BorderBrush));
         if (accent)
         {

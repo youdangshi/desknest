@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\DeskNest.Core\DeskNest.Core.csproj" />
+    <ProjectReference Include="..\..\src\DeskNest.App\DeskNest.App.csproj" />
   </ItemGroup>
 </Project>

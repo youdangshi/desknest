@@ -81,6 +81,36 @@ Check("边缘外 20 像素仍算命中（放宽 24）", () => BoxDropTarget.Pick
 Check("边缘外 40 像素不算命中（宽容度是 24）", () => BoxDropTarget.Pick(560, 300, targets, "me", null) is null);
 Check("大盒子里套小盒子时选小的", () => BoxDropTarget.Pick(660, 160, new[] { other, small }, "me", null)?.Id == "small");
 
+Console.WriteLine("== 任何颜色下都要看得清（人眼可读性） ==");
+// 1) 填色底（主按钮/徽标/选中项）上的文字：必须按底色亮度自动取白或近黑
+var accents = new[]
+{
+    System.Windows.Media.Color.FromRgb(0x4C, 0x8B, 0xF5),   // 默认蓝
+    System.Windows.Media.Color.FromRgb(0xFF, 0xD4, 0x00),   // 浅黄（最容易白底白字）
+    System.Windows.Media.Color.FromRgb(0x8E, 0xE0, 0x8E),   // 浅绿
+    System.Windows.Media.Color.FromRgb(0xF5, 0xB0, 0xC8),   // 浅粉
+    System.Windows.Media.Color.FromRgb(0x1A, 0x1A, 0x1A),   // 近黑
+    System.Windows.Media.Color.FromRgb(0xFF, 0xFF, 0xFF)    // 纯白
+};
+foreach (var accent in accents)
+{
+    var name = $"#{accent.R:X2}{accent.G:X2}{accent.B:X2}";
+    var ratio = DeskNest.App.Ui.Contrast.Ratio(DeskNest.App.Ui.Contrast.BestForegroundOn(accent), accent);
+    Check($"强调色 {name} 上的文字对比度 ≥ 4.5:1（实际 {ratio:0.0}:1）", () => ratio >= 4.5);
+}
+
+// 2) 半透明卡片压在任意壁纸上：颜色本身保证不了时要能识别出来（界面会给文字加描边兜底）
+var darkCard = System.Windows.Media.Color.FromRgb(0x28, 0x28, 0x2E);
+var lightText = System.Windows.Media.Color.FromRgb(0xF5, 0xF5, 0xF5);
+var whiteWall = System.Windows.Media.Color.FromRgb(0xFF, 0xFF, 0xFF);
+var blackWall = System.Windows.Media.Color.FromRgb(0x00, 0x00, 0x00);
+Check("深色卡片 30% 压在亮壁纸上会被判定为需要描边",
+    () => DeskNest.App.Ui.Contrast.NeedsTextBackdrop(lightText, darkCard, 0.3, whiteWall));
+Check("深色卡片 95% 压在亮壁纸上不再需要描边",
+    () => !DeskNest.App.Ui.Contrast.NeedsTextBackdrop(lightText, darkCard, 0.95, whiteWall));
+Check("深色卡片 30% 压在暗壁纸上不需要描边",
+    () => !DeskNest.App.Ui.Contrast.NeedsTextBackdrop(lightText, darkCard, 0.3, blackWall));
+
 try { Directory.Delete(root, true); } catch { }
 
 Console.WriteLine();

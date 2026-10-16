@@ -205,5 +205,18 @@ public static partial class UiKit
 
     public static void SetTooltip(FrameworkElement el, string text) => el.ToolTip = text;
 
+    /// <summary>
+    /// 压在**任意壁纸**上的文字（桌面盒子标题、状态行、文件项名称）加一层极淡的暗色描边。
+    /// 盒子卡片是半透明的，壁纸一亮，"浅色卡片 + 浅色文字"就会糊成一片——
+    /// 这和桌面图标标签带描边是同一个道理：颜色保证不了的地方，用一层描边兜底。
+    /// </summary>
+    public static DropShadowEffect LegibleTextShadow() => new()
+    {
+        BlurRadius = 3,
+        ShadowDepth = 0,
+        Opacity = 0.7,
+        Color = Colors.Black
+    };
+
     public static string Culture => CultureInfo.CurrentCulture.Name;
 }

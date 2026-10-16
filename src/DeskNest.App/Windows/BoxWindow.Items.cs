@@ -78,7 +78,8 @@ public sealed partial class BoxWindow
                 TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.Wrap,
                 MaxHeight = _box.TextSize * 1.5 * Math.Max(1, _box.FileNameLines),
-                Margin = new Thickness(0, 3, 0, 0)
+                Margin = new Thickness(0, 3, 0, 0),
+                Effect = UiKit.LegibleTextShadow()   // 半透明卡片 + 任意壁纸：靠描边保证文件名可读
             });
         }
         if (item.IsMissing) stack.Children.Add(UiKit.Text("失效", 10, secondary: true));
