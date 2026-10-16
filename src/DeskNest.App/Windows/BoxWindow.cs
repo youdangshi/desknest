@@ -115,6 +115,13 @@ public sealed partial class BoxWindow : Window
         // 点击那一刻提上来，用户立刻看得到；之后点别的程序，那个程序自然又盖回来。
         PreviewMouseLeftButtonDown += (_, _) => RaiseToFront();
         PreviewMouseRightButtonDown += (_, _) => RaiseToFront();
+        // 双击盒子（标题栏或空白处）＝ 隐藏，和 DeskBox 一致（盒内文件的双击被文件项自己处理掉，不会冲突）
+        _root.MouseLeftButtonDown += (_, e) =>
+        {
+            if (e.ClickCount != 2) return;
+            OnBoxDoubleClick();
+            e.Handled = true;
+        };
         DragEnter += OnDragEnter;
         DragOver += OnDragOver;
         DragLeave += (_, _) => _root.BorderBrush = Theme.Desktop.BorderBrush;
@@ -206,11 +213,7 @@ public sealed partial class BoxWindow : Window
             ApplyLook();
         }));
         panel.Children.Add(HeaderButton("✕", "隐藏（托盘里可再显示）", () =>
-        {
-            _box.IsHidden = true;
-            AppServices.Repo.Upsert(_box);
-            Hide();
-        }));
+                HideBox()));
         return panel;
     }
 
@@ -559,11 +562,41 @@ public sealed partial class BoxWindow : Window
     {
         if (e.ClickCount == 2)
         {
-            _box.RolledUp = !_box.RolledUp;
-            AppServices.Repo.Upsert(_box);
-            ApplyLook();
+            OnBoxDoubleClick();
             e.Handled = true;
             return;
         }
+    }
+
+    /// <summary>
+    /// 双击盒子的行为。默认**隐藏**（DeskBox 就是这么做的：双击把格子收起来，托盘里再叫回来）。
+    /// 习惯"双击卷起"的人可以在右键菜单 →「更多操作 › 双击盒子时」里改。
+    /// </summary>
+    private void OnBoxDoubleClick()
+    {
+        var action = AppServices.Settings.Get("box.doubleClickAction", "Hide");
+        if (string.Equals(action, "RollUp", StringComparison.OrdinalIgnoreCase))
+        {
+            _box.RolledUp = !_box.RolledUp;
+            AppServices.Repo.Upsert(_box);
+            ApplyLook();
+            return;
+        }
+        if (string.Equals(action, "Nothing", StringComparison.OrdinalIgnoreCase)) return;
+        HideBox();
+    }
+
+    /// <summary>隐藏盒子（可从托盘或撤销按钮叫回来）。</summary>
+    public void HideBox()
+    {
+        _box.IsHidden = true;
+        AppServices.Repo.Upsert(_box);
+        Hide();
+        Ui.Notifications.Toast($"已隐藏「{_box.Name}」，托盘图标里可以再显示", 6, action: () =>
+        {
+            _box.IsHidden = false;
+            AppServices.Repo.Upsert(_box);
+            Show();
+        }, actionText: "撤销");
     }
 }

@@ -156,6 +156,13 @@ public sealed partial class BoxWindow
             new Separator(),
             Item("重命名盒子…", RenameBox),
             new Separator(),
+            Sub("双击盒子时",
+                Item("隐藏盒子（DeskBox 那样）", () => SetDoubleClickAction("Hide"), checkable: true,
+                    isChecked: DoubleClickAction == "Hide"),
+                Item("卷起 / 展开", () => SetDoubleClickAction("RollUp"), checkable: true,
+                    isChecked: DoubleClickAction == "RollUp"),
+                Item("什么都不做", () => SetDoubleClickAction("Nothing"), checkable: true,
+                    isChecked: DoubleClickAction == "Nothing")),
             Sub("透明度", opacity
                 .Select(o => Item(o.Label, () => SetOpacity(o.Value), checkable: true, isChecked: Math.Abs(_box.Opacity - o.Value) < 0.02))
                 .ToArray()),
@@ -446,6 +453,16 @@ public sealed partial class BoxWindow
 
     /// <summary>当前标题样式（空值按"标准"处理）。</summary>
     private string TitleStyleKey => string.IsNullOrWhiteSpace(_box.TitleStyle) ? "Standard" : _box.TitleStyle;
+
+    /// <summary>双击盒子的行为：Hide（默认，DeskBox 那样）/ RollUp / Nothing。</summary>
+    private static string DoubleClickAction => AppServices.Settings.Get("box.doubleClickAction", "Hide");
+
+    private void SetDoubleClickAction(string action)
+    {
+        AppServices.Settings.Set("box.doubleClickAction", action);
+        var label = action switch { "RollUp" => "卷起 / 展开", "Nothing" => "什么都不做", _ => "隐藏盒子" };
+        Ui.Notifications.Toast("双击盒子：" + label, 3);
+    }
 
     /// <summary>标题栏被隐藏时，盒子的其余部分就是拖动热区（拖任意处都能移动）。</summary>
     private bool IsTitleBarHidden => TitleStyleKey == "Hidden";
