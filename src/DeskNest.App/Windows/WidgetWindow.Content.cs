@@ -253,28 +253,228 @@ public sealed partial class WidgetWindow
     {
         _content.Children.Clear();
         _perfLines.Clear();
-        _content.Children.Add(UiKit.Text("性能", 13, bold: true));
-        foreach (var name in new[] { "CPU", "内存", "网络", "GPU" })
+        _perfRows.Clear();
+
+        // 评审结论（oiloil-ui-ux-guide review 模式）：
+        // P0 数字没有参照系、没有异常突出；P1 「布局」设置形同虚设、数值不对齐、GPU 缺数据时是开发者话术、
+        // 全宽按钮在小盒子里占四分之一高度。下面按这两级问题重做。
+        var layout = AppServices.Settings.Get("perf.layout", "紧凑横条");
+        // 双击组件本体直接打开性能面板（原来是一个占满整行的大按钮，在小盒子里太浪费空间）
+        _content.MouseLeftButtonDown += (_, e) =>
         {
-            var line = UiKit.Text("", 12);
-            _perfLines.Add(line);
-            _content.Children.Add(line);
-        }
-        _content.Children.Add(UiKit.Btn("打开性能面板", () =>
-        {
+            if (e.ClickCount != 2) return;
             if (App.Current is App app) app.ShowMain("perf");
-        }));
+            e.Handled = true;
+        };
+        _content.ToolTip = "双击打开性能监视页";
+        var shown = PerfMetrics().Where(m => AppServices.Settings.Get(m.SettingKey, true)).ToList();
+        if (shown.Count == 0)
+        {
+            _content.Children.Add(UiKit.Text("没有勾选任何显示项（设置 → 性能监视）", 12, secondary: true));
+            return;
+        }
+
+        if (layout == "纯文字")
+        {
+            foreach (var metric in shown)
+            {
+                var line = UiKit.Text("", 12);
+                _perfLines.Add(line);
+                _content.Children.Add(line);
+            }
+        }
+        else if (layout == "竖条")
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0) };
+            foreach (var metric in shown) row.Children.Add(BuildColumn(metric));
+            _content.Children.Add(row);
+        }
+        else if (layout == "网格")
+        {
+            var wrap = new System.Windows.Controls.WrapPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
+            foreach (var metric in shown) wrap.Children.Add(BuildTile(metric));
+            _content.Children.Add(wrap);
+        }
+        else
+        {
+            foreach (var metric in shown) _content.Children.Add(BuildBarRow(metric));
+        }
+
         UpdateSystemMonitor();
+    }
+
+    private sealed record PerfMetric(string Key, string Label, string SettingKey);
+
+    /// <summary>四个指标的定义（顺序固定：CPU、内存、网络、GPU）。</summary>
+    private static List<PerfMetric> PerfMetrics() => new()
+    {
+        new PerfMetric("cpu", "CPU", "perf.show.cpu"),
+        new PerfMetric("mem", "内存", "perf.show.mem"),
+        new PerfMetric("net", "网络", "perf.show.net"),
+        new PerfMetric("gpu", "GPU", "perf.show.gpu")
+    };
+
+    private readonly Dictionary<string, (Border Fill, Border Track, TextBlock Value, TextBlock? Sub)> _perfRows = new();
+
+    /// <summary>一行：名称 + 圆角进度条 + 右对齐数值（进度条颜色随占用率变化，异常一眼可见）。</summary>
+    private UIElement BuildBarRow(PerfMetric metric)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var label = UiKit.Text(metric.Label, 12, secondary: true);
+        label.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(label, 0);
+
+        var track = new Border
+        {
+            Height = 8,
+            CornerRadius = new CornerRadius(4),
+            Background = Theme.Desktop.BorderBrush,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var fill = new Border
+        {
+            Height = 8,
+            CornerRadius = new CornerRadius(4),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Background = Theme.Desktop.AccentBrush
+        };
+        var barHost = new Grid();
+        barHost.Children.Add(track);
+        barHost.Children.Add(fill);
+        barHost.SizeChanged += (_, e) => fill.Width = Math.Max(3, e.NewSize.Width * _perfFillRatio.GetValueOrDefault(metric.Key, 0));
+        Grid.SetColumn(barHost, 1);
+
+        var value = UiKit.Text("—", 12);
+        value.VerticalAlignment = VerticalAlignment.Center;
+        value.TextAlignment = TextAlignment.Right;
+        value.MinWidth = 46;
+        value.Margin = new Thickness(Tokens.Space8, 0, 0, 0);
+        Grid.SetColumn(value, 2);
+
+        grid.Children.Add(label);
+        grid.Children.Add(barHost);
+        grid.Children.Add(value);
+        _perfRows[metric.Key] = (fill, track, value, null);
+        _perfBarHosts[metric.Key] = barHost;
+        return grid;
+    }
+
+    private readonly Dictionary<string, Grid> _perfBarHosts = new();
+    private readonly Dictionary<string, double> _perfFillRatio = new();
+
+    /// <summary>一列：竖向柱 + 数值 + 名称。</summary>
+    private UIElement BuildColumn(PerfMetric metric)
+    {
+        var col = new StackPanel { Margin = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Bottom };
+        var value = UiKit.Text("—", 12, bold: true);
+        value.HorizontalAlignment = HorizontalAlignment.Center;
+        var track = new Border
+        {
+            Width = 18,
+            Height = 90,
+            CornerRadius = new CornerRadius(9),
+            Background = Theme.Desktop.BorderBrush,
+            Margin = new Thickness(0, 4, 0, 4)
+        };
+        var fill = new Border
+        {
+            Width = 18,
+            CornerRadius = new CornerRadius(9),
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Background = Theme.Desktop.AccentBrush
+        };
+        var barHost = new Grid { Height = 90 };
+        barHost.Children.Add(track);
+        barHost.Children.Add(fill);
+        col.Children.Add(value);
+        col.Children.Add(barHost);
+        col.Children.Add(UiKit.Text(metric.Label, 11.5, secondary: true));
+        _perfRows[metric.Key] = (fill, track, value, null);
+        _perfBarHosts[metric.Key] = barHost;
+        return col;
+    }
+
+    /// <summary>一格：小卡片（名称 + 数值 + 细条）。</summary>
+    private UIElement BuildTile(PerfMetric metric)
+    {
+        var card = new Border
+        {
+            Width = 104,
+            Margin = new Thickness(4),
+            Padding = new Thickness(10, 8, 10, 8),
+            CornerRadius = new CornerRadius(Tokens.CornerCard),
+            BorderThickness = new Thickness(1),
+            BorderBrush = Theme.Desktop.BorderBrush,
+            Background = Theme.Desktop.CardBrush
+        };
+        var stack = new StackPanel();
+        stack.Children.Add(UiKit.Text(metric.Label, 11.5, secondary: true));
+        var value = UiKit.Text("—", 16, bold: true);
+        stack.Children.Add(value);
+        var track = new Border { Height = 4, CornerRadius = new CornerRadius(2), Background = Theme.Desktop.BorderBrush, Margin = new Thickness(0, 6, 0, 0) };
+        var fill = new Border { Height = 4, CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left, Background = Theme.Desktop.AccentBrush };
+        var barHost = new Grid();
+        barHost.Children.Add(track);
+        barHost.Children.Add(fill);
+        barHost.SizeChanged += (_, e) => fill.Width = Math.Max(2, e.NewSize.Width * _perfFillRatio.GetValueOrDefault(metric.Key, 0));
+        stack.Children.Add(barHost);
+        card.Child = stack;
+        _perfRows[metric.Key] = (fill, track, value, null);
+        _perfBarHosts[metric.Key] = barHost;
+        return card;
     }
 
     private void UpdateSystemMonitor()
     {
         var s = AppServices.Perf.Latest;
-        if (s is null || _perfLines.Count < 4) return;
-        _perfLines[0].Text = $"CPU    {s.CpuPercent:0.#}%";
-        _perfLines[1].Text = $"内存   {s.MemoryPercent:0.#}%  ({UiKit.Fmt(s.MemoryUsedBytes)} / {UiKit.Fmt(s.MemoryTotalBytes)})";
-        _perfLines[2].Text = $"网络   ↑{FormatRate(s.NetUpBytesPerSec)}  ↓{FormatRate(s.NetDownBytesPerSec)}";
-        _perfLines[3].Text = s.GpuPercent is { } gpu ? $"GPU    {gpu}%{(s.GpuTempC is { } gt ? $"  {gt:0}°C" : "")}" : "GPU    暂无数据（需 NVIDIA 驱动）";
+        if (s is null) return;
+
+        // 纯文字布局沿用老的 _perfLines
+        if (_perfLines.Count >= 4 && _perfRows.Count == 0)
+        {
+            _perfLines[0].Text = $"CPU    {s.CpuPercent:0.#}%";
+            _perfLines[1].Text = $"内存   {s.MemoryPercent:0.#}%  ({UiKit.Fmt(s.MemoryUsedBytes)} / {UiKit.Fmt(s.MemoryTotalBytes)})";
+            _perfLines[2].Text = $"网络   ↑{FormatRate(s.NetUpBytesPerSec)}  ↓{FormatRate(s.NetDownBytesPerSec)}";
+            _perfLines[3].Text = s.GpuPercent is { } g0 ? $"GPU    {g0}%" : "GPU    —";
+            return;
+        }
+
+        Set("cpu", s.CpuPercent, $"{s.CpuPercent:0}%");
+        Set("mem", s.MemoryPercent, $"{s.MemoryPercent:0}%");
+        // 网络没有"百分比"这一说，用上下行吞吐里较大的那个做相对长度（对数刻度，避免被大流量压平）
+        var throughput = new[] { s.NetUpBytesPerSec, s.NetDownBytesPerSec };
+        var peak = Math.Max(throughput.Max(), 1);
+        var netRatio = Math.Min(100, Math.Log10(peak + 1) / 6 * 100);   // 1 MB/s ≈ 100%
+        // 网络上只有"多少流量"没有"占用率"，用 ↓ 明确方向，↑ 的数值放进提示里（行内放不下两组数）
+        Set("net", netRatio, $"↓{FormatRate(s.NetDownBytesPerSec)}");
+        if (_perfRows.TryGetValue("net", out var netRow))
+            netRow.Value.ToolTip = $"下行 {FormatRate(s.NetDownBytesPerSec)}　上行 {FormatRate(s.NetUpBytesPerSec)}";
+        Set("gpu", s.GpuPercent ?? 0, s.GpuPercent is { } gpu ? $"{gpu}%" : "—", s.GpuPercent is null ? 0 : null);
+
+        void Set(string key, double percent, string text, double? forceRatio = null)
+        {
+            if (!_perfRows.TryGetValue(key, out var row)) return;
+            var ratio = Math.Clamp((forceRatio ?? percent) / 100.0, 0, 1);
+            _perfFillRatio[key] = ratio;
+            row.Value.Text = text;
+            System.Windows.Media.SolidColorBrush brush = percent switch
+            {
+                >= 85 => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xE2, 0x53, 0x53)),
+                >= 60 => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xE0, 0xA0, 0x30)),
+                _ => Theme.Desktop.AccentBrush as System.Windows.Media.SolidColorBrush
+                     ?? new System.Windows.Media.SolidColorBrush(Theme.Desktop.Accent)
+            };
+            row.Fill.Background = brush;
+            if (_perfBarHosts.TryGetValue(key, out var host))
+            {
+                var width = host.ActualWidth > 0 ? host.ActualWidth : 80;
+                if (row.Fill.Width != width * ratio) row.Fill.Width = Math.Max(3, width * ratio);
+            }
+        }
     }
 
     private static string FormatRate(double bytesPerSec) => bytesPerSec switch
