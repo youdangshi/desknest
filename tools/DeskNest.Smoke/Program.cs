@@ -181,6 +181,67 @@ Check("深色卡片 95% 压在亮壁纸上不再需要描边",
 Check("深色卡片 30% 压在暗壁纸上不需要描边",
     () => !DeskNest.App.Ui.Contrast.NeedsTextBackdrop(lightText, darkCard, 0.3, blackWall));
 
+Console.WriteLine("== 卡片颜色 / 材质真的参与绘制（改外观参数，盒子必须变色） ==");
+// 缺陷：「改外观参数盒子颜色不变」——Material / MaterialIntensity 被收下却从没参与绘制。
+// 这里直接对"算出来的像素"断言：颜色、材质、材质强度、透明度，改任何一个都必须让像素或者透明度变。
+var themeBase = new DeskNest.App.Ui.ThemeTokens
+{
+    Scheme = DeskNest.App.Ui.ColorScheme.Dark,
+    Material = DeskNest.App.Ui.MaterialKind.Acrylic,
+    MaterialIntensity = 0.65,
+    Opacity = 0.82
+};
+var paintBase = themeBase.ResolveCardPaint();
+
+var thicker = themeBase.Clone(); thicker.MaterialIntensity = 1.0;
+Check("材质强度 0.65 → 1.0 画出来的像素真的变了", () => thicker.ResolveCardPaint() != paintBase);
+var thinner = themeBase.Clone(); thinner.MaterialIntensity = 0.1;
+Check("材质强度调低后更透（alpha 变小）", () => thinner.ResolveCardPaint().A < paintBase.A);
+
+var redCard = themeBase.Clone();
+redCard.CardColorOverride = System.Windows.Media.Color.FromRgb(0xC0, 0x20, 0x20);
+Check("换成红色卡片后 RGB 真的变了", () =>
+{
+    var p = redCard.ResolveCardPaint();
+    return p.R != paintBase.R || p.G != paintBase.G || p.B != paintBase.B;
+});
+Check("换颜色不会顺带改透明度", () => redCard.ResolveCardPaint().A == paintBase.A);
+
+var solidTokens = themeBase.Clone(); solidTokens.Material = DeskNest.App.Ui.MaterialKind.Solid;
+var micaTokens = themeBase.Clone(); micaTokens.Material = DeskNest.App.Ui.MaterialKind.Mica;
+Check("三种材质画出来互不相同（纯色 / 亚克力 / 云母）", () =>
+{
+    var s = solidTokens.ResolveCardPaint(); var m = micaTokens.ResolveCardPaint();
+    return s != paintBase && paintBase != m && s != m;
+});
+Check("亚克力比纯色更透（同样透明度下 alpha 更小）", () => paintBase.A < solidTokens.ResolveCardPaint().A);
+Check("云母比亚克力更透（更贴壁纸）", () => micaTokens.ResolveCardPaint().A < paintBase.A);
+
+var lightCard = themeBase.Clone();
+lightCard.CardColorOverride = System.Windows.Media.Color.FromRgb(0xFF, 0xFF, 0xFF);
+Check("选白色卡片后文字自动变深、且对比度 ≥ 4.5:1", () =>
+{
+    var fg = lightCard.Foreground;
+    return fg.R < 0x80
+        && DeskNest.App.Ui.Contrast.Ratio(fg, System.Windows.Media.Color.FromRgb(0xFF, 0xFF, 0xFF)) >= 4.5;
+});
+var darkCardTokens = themeBase.Clone();
+darkCardTokens.CardColorOverride = System.Windows.Media.Color.FromRgb(0x10, 0x10, 0x10);
+Check("选近黑卡片后文字自动变浅", () => darkCardTokens.Foreground.R > 0x80);
+
+Check("没自定义颜色时底色仍按配色方案走（默认外观没被改掉）",
+    () => themeBase.PaintColor == themeBase.Background);
+Check("深色方案的默认盒底仍是 #1B1B1F",
+    () => themeBase.PaintColor == System.Windows.Media.Color.FromRgb(0x1B, 0x1B, 0x1F));
+
+DeskNest.App.Ui.Theme.ApplyDesktop(themeBase);
+Check("单盒覆盖材质/强度后，像素与全局默认不同",
+    () => DeskNest.App.Ui.Theme.ResolveDesktop("Mica", 0.9, 0.7, 16, false).ResolveCardPaint()
+        != themeBase.ResolveCardPaint());
+Check("单盒选「跟随全局」时像素与全局完全一致",
+    () => DeskNest.App.Ui.Theme.ResolveDesktop("Mica", 0.9, 0.7, 16, true).ResolveCardPaint()
+        == themeBase.ResolveCardPaint());
+
 try { Directory.Delete(root, true); } catch { }
 
 Console.WriteLine();

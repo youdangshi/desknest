@@ -106,7 +106,9 @@ public static class AppearancePage
         return UiKit.Section(title,
             UiKit.ComboRow("🌗", "配色", "跟随系统 / 深色 / 浅色 / 纯黑 / 护眼", UiOptions.Schemes, tokens.Scheme.ToString(),
                 v => Save(prefix, read, tokens => tokens.Scheme = Enum.Parse<ColorScheme>(v), host, rebuild: true)),
-            UiKit.ComboRow("🪟", "材质", "亚克力最通透，纯色最省资源", UiOptions.Materials, tokens.Material.ToString(),
+            CardColorRow(prefix, read, tokens, host),
+            UiKit.ComboRow("🪟", "材质", "亚克力最通透，纯色最省资源；材质与强度都会改变盒子实际画出来的底色",
+                UiOptions.Materials, tokens.Material.ToString(),
                 v => Save(prefix, read, t => t.Material = Enum.Parse<MaterialKind>(v), host)),
             UiKit.SliderRow("💧", "材质强度", null, 0.1, 1.0, tokens.MaterialIntensity,
                 v => Save(prefix, read, t => t.MaterialIntensity = Math.Round(v, 2), host),
@@ -117,6 +119,55 @@ public static class AppearancePage
             UiKit.SliderRow("⬜", "圆角", null, 0, 28, tokens.CornerRadius,
                 v => Save(prefix, read, t => t.CornerRadius = (int)Math.Round(v), host),
                 ((int)tokens.CornerRadius).ToString()));
+    }
+
+    /// <summary>
+    /// 卡片颜色的预设色板。产品里以前**没有**这个入口，用户只能改"配色方案"，于是"给盒子换个颜色"无从下手。
+    /// 选定后文字色会按新底色自动取深/浅，所以不会出现白底白字。
+    /// </summary>
+    private static readonly (string Name, string Hex)[] CardPalette =
+    {
+        ("深灰", "#2B2B31"), ("纯白", "#FFFFFF"), ("浅灰", "#E9E9EE"), ("米色", "#F3E9D7"),
+        ("深蓝", "#16233A"), ("墨绿", "#14261E"), ("酒红", "#2A1418"), ("紫黑", "#201A2E")
+    };
+
+    private static System.Windows.Media.Color ParseHex(string hex) =>
+        (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex)!;
+
+    private static string HexOf(System.Windows.Media.Color? c) =>
+        c is { } v ? $"#{v.R:X2}{v.G:X2}{v.B:X2}" : "";
+
+    /// <summary>「卡片颜色」一行：盒底真正画出来的颜色 = 材质/强度/透明度叠加后的结果。</summary>
+    private static UIElement CardColorRow(string prefix, Func<ThemeTokens> read, ThemeTokens tokens, MainWindow host)
+    {
+        var strip = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var currentHex = HexOf(tokens.CardColorOverride);
+        foreach (var (name, hex) in CardPalette)
+        {
+            var picked = string.Equals(currentHex, hex, StringComparison.OrdinalIgnoreCase);
+            var dot = new System.Windows.Controls.Border
+            {
+                Width = 26,
+                Height = 26,
+                CornerRadius = new CornerRadius(6),
+                Margin = new Thickness(0, 0, 6, 0),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Background = new System.Windows.Media.SolidColorBrush(ParseHex(hex)),
+                BorderThickness = new Thickness(picked ? 3 : 1),
+                BorderBrush = picked ? Theme.Shell.AccentBrush : Theme.Shell.BorderBrush,
+                ToolTip = picked ? name + "（当前）" : name
+            };
+            var hexCaptured = hex;
+            dot.MouseLeftButtonUp += (_, _) => Save(prefix, read, t => t.CardColorOverride = ParseHex(hexCaptured), host);
+            strip.Children.Add(dot);
+        }
+        strip.Children.Add(UiKit.Btn("跟配色方案", () => Save(prefix, read, t => t.CardColorOverride = null, host), true));
+        return UiKit.Row("🎨", "卡片颜色",
+            "盒子与组件真正的底色；不选＝跟随上面的配色方案（选了浅色会自动换成深色文字）", strip);
     }
 
     /// <summary>把一次修改写进设置并立即生效（设计窗口要重建页面，收纳窗口只需刷新桌面层）。</summary>
@@ -131,6 +182,7 @@ public static class AppearancePage
         AppServices.Settings.Set($"{prefix}.intensity", tokens.MaterialIntensity);
         AppServices.Settings.Set($"{prefix}.opacity", tokens.Opacity);
         AppServices.Settings.Set($"{prefix}.corner", tokens.CornerRadius);
+        AppServices.Settings.Set($"{prefix}.cardColor", HexOf(tokens.CardColorOverride));
 
         if (prefix == "theme.shell") Theme.ApplyShell(tokens);
         else Theme.ApplyDesktop(tokens);
@@ -148,6 +200,7 @@ public static class AppearancePage
         AppServices.Settings.Set($"{toPrefix}.intensity", copy.MaterialIntensity);
         AppServices.Settings.Set($"{toPrefix}.opacity", copy.Opacity);
         AppServices.Settings.Set($"{toPrefix}.corner", copy.CornerRadius);
+        AppServices.Settings.Set($"{toPrefix}.cardColor", HexOf(copy.CardColorOverride));
 
         if (toPrefix == "theme.shell") Theme.ApplyShell(copy);
         else Theme.ApplyDesktop(copy);

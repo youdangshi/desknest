@@ -7,6 +7,9 @@ namespace DeskNest.App.Ui;
 public enum MaterialKind { Acrylic, Mica, Solid }
 public enum ColorScheme { Dark, Light, PureBlack, EyeCare, FollowSystem }
 
+/// <summary>卡片最终画法（A/R/G/B）。抽出来是为了让冒烟验证器直接比较"画出来的像素"，不必实例化 WPF 控件。</summary>
+public readonly record struct CardPaint(byte A, byte R, byte G, byte B);
+
 public sealed class ThemeTokens
 {
     public ColorScheme Scheme { get; set; } = ColorScheme.FollowSystem;
@@ -16,6 +19,12 @@ public sealed class ThemeTokens
     public int CornerRadius { get; set; } = 12;
     public double Opacity { get; set; } = 0.82;
     public bool ReduceMotion { get; set; }
+
+    /// <summary>
+    /// 「卡片颜色」覆盖项（null = 跟随配色方案）。桌面盒 / 组件 / 桌宠的底色优先用它。
+    /// 以前只有"配色方案"能间接影响盒底，产品里没有换色入口 —— 用户反馈"改外观参数盒子颜色不变"就是这里。
+    /// </summary>
+    public Color? CardColorOverride { get; set; }
 
     /// <summary>
     /// 明暗判定必须由配色方案决定，不能靠时间猜：护眼（浅底深字）在夜里会被判成深色，
@@ -37,12 +46,18 @@ public sealed class ThemeTokens
         _ => IsDark ? Color.FromRgb(0x1B, 0x1B, 0x1F) : Color.FromRgb(0xF6, 0xF6, 0xF8)
     };
 
-    public Color Foreground => Scheme switch
-    {
-        ColorScheme.EyeCare => Color.FromRgb(0x2B, 0x24, 0x18),
-        ColorScheme.Light => Color.FromRgb(0x1A, 0x1A, 0x1A),
-        _ => Color.FromRgb(0xF5, 0xF5, 0xF5)
-    };
+    /// <summary>
+    /// 文字色：默认跟着配色方案走；**一旦自定义了卡片颜色，就按卡片自己的亮度重算**（浅底配深字、深底配浅字）。
+    /// 否则"深色方案 + 白色卡片"会得到白底白字。
+    /// </summary>
+    public Color Foreground => CardColorOverride is { } custom
+        ? Contrast.BestForegroundOn(custom)
+        : Scheme switch
+        {
+            ColorScheme.EyeCare => Color.FromRgb(0x2B, 0x24, 0x18),
+            ColorScheme.Light => Color.FromRgb(0x1A, 0x1A, 0x1A),
+            _ => Color.FromRgb(0xF5, 0xF5, 0xF5)
+        };
 
     public Brush BackgroundBrush => new SolidColorBrush(Background);
     public Brush ForegroundBrush => new SolidColorBrush(Foreground);
@@ -78,6 +93,37 @@ public sealed class ThemeTokens
     public Color DangerColor => Color.FromRgb(0xE2, 0x53, 0x53);
     public Brush DangerBrush => new SolidColorBrush(DangerColor);
     public Brush SuccessBrush => new SolidColorBrush(Color.FromRgb(0x3F, 0xB9, 0x50));
+
+    /// <summary>卡片（桌面盒 / 组件）真正画出来的底色：自定义颜色优先，否则跟随配色方案。</summary>
+    public Color PaintColor => CardColorOverride ?? Background;
+
+    /// <summary>
+    /// 材质怎么影响绘制：（不透明度系数，向前景色靠拢的比例）。
+    /// 纯色 = 完全按用户设的透明度画；亚克力越强越"厚"（更实、略微发亮）；云母更贴背景（更透、更融）。
+    /// 纯函数、不碰 WPF 控件，冒烟验证器可以直接断言像素。
+    /// </summary>
+    public (double AlphaFactor, double TintToForeground) MaterialFactors()
+    {
+        var i = Math.Clamp(MaterialIntensity, 0, 1);
+        return Material switch
+        {
+            MaterialKind.Solid => (1.00, 0.00),
+            MaterialKind.Mica => (0.40 + 0.35 * i, 0.28 * i),
+            _ => (0.60 + 0.40 * i, 0.10 * i)          // Acrylic（默认）
+        };
+    }
+
+    /// <summary>把令牌算成最终像素：颜色 + 材质 + 材质强度 + 透明度一起参与，谁都不是死控件。</summary>
+    public CardPaint ResolveCardPaint()
+    {
+        var (alphaFactor, tint) = MaterialFactors();
+        var card = PaintColor;
+        var fg = Foreground;
+        byte Mix(byte a, byte b) => (byte)Math.Round(a * (1 - tint) + b * tint);
+        return new CardPaint(
+            (byte)(Math.Clamp(Opacity, 0.25, 1.0) * alphaFactor * 255),
+            Mix(card.R, fg.R), Mix(card.G, fg.G), Mix(card.B, fg.B));
+    }
 
     public ThemeTokens Clone() => (ThemeTokens)MemberwiseClone();
 }
@@ -144,13 +190,16 @@ public static class Theme
         => ResolveFrom(Shell, material, intensity, opacity, corner, inherit);
 
     /// <summary>把"收纳窗口令牌 + 单对象覆盖"合成最终令牌（桌面盒 / 组件用）。</summary>
-    public static ThemeTokens ResolveDesktop(string? material, double? intensity, double? opacity, int? corner, bool inherit)
-        => ResolveFrom(Desktop, material, intensity, opacity, corner, inherit);
+    public static ThemeTokens ResolveDesktop(string? material, double? intensity, double? opacity, int? corner, bool inherit,
+        Color? cardColor = null)
+        => ResolveFrom(Desktop, material, intensity, opacity, corner, inherit, cardColor);
 
-    private static ThemeTokens ResolveFrom(ThemeTokens basis, string? material, double? intensity, double? opacity, int? corner, bool inherit)
+    private static ThemeTokens ResolveFrom(ThemeTokens basis, string? material, double? intensity, double? opacity, int? corner,
+        bool inherit, Color? cardColor = null)
     {
         var t = basis.Clone();
         if (inherit) return t;
+        if (cardColor is { } cc) t.CardColorOverride = cc;
         if (!string.IsNullOrEmpty(material) && Enum.TryParse<MaterialKind>(material, out var m)) t.Material = m;
         if (intensity is { } i) t.MaterialIntensity = i;
         if (opacity is { } o) t.Opacity = o;

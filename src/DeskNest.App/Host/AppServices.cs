@@ -102,8 +102,17 @@ public static class AppServices
             MaterialIntensity = Settings.Get($"{prefix}.intensity", Settings.Get("theme.intensity", 0.65)),
             CornerRadius = Settings.Get($"{prefix}.corner", Settings.Get("theme.corner", 12)),
             Opacity = Settings.Get($"{prefix}.opacity", Settings.Get("theme.opacity", 0.82)),
-            ReduceMotion = Settings.Get("theme.reduceMotion", false)
+            ReduceMotion = Settings.Get("theme.reduceMotion", false),
+            CardColorOverride = ParseCardColor(Settings.Get($"{prefix}.cardColor", Settings.Get("theme.cardColor", "")))
         };
+    }
+
+    /// <summary>"#RRGGBB" → 颜色；空着或写坏了都当作"跟随配色方案"（null）。</summary>
+    private static System.Windows.Media.Color? ParseCardColor(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        try { return (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(raw)!; }
+        catch { return null; }
     }
 
     public static void ApplyPetSettings()

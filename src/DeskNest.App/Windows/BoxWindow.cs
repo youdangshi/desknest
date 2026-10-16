@@ -197,9 +197,10 @@ public sealed partial class BoxWindow : Window
     {
         var t = Theme.ResolveDesktop(box.Material, box.MaterialIntensity, box.Opacity, box.CornerRadius,
             box.StyleScope == StyleScope.Inherit);
-        var bg = t.Background;
-        var alpha = (byte)(Math.Clamp(t.Opacity, 0.25, 1.0) * 255);
-        var brush = new SolidColorBrush(Color.FromArgb(alpha, bg.R, bg.G, bg.B));
+        // 底色 / 材质 / 材质强度 / 透明度统一由 ThemeTokens.ResolveCardPaint() 算，
+        // 修掉"Material 与 MaterialIntensity 被收下却从没参与绘制"这个死控件缺陷。
+        var paint = t.ResolveCardPaint();
+        var brush = new SolidColorBrush(Color.FromArgb(paint.A, paint.R, paint.G, paint.B));
         brush.Freeze();
         return brush;
     }

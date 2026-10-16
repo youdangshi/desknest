@@ -163,8 +163,9 @@ public sealed partial class WidgetWindow : Window
         var t = Theme.ResolveDesktop(_widget.Material, _widget.MaterialIntensity, _widget.Opacity,
             _widget.CornerRadius, _widget.StyleScope == StyleScope.Inherit);
         _root.CornerRadius = new CornerRadius(t.CornerRadius);
-        var bg = t.Background;
-        var brush = new SolidColorBrush(Color.FromArgb((byte)(Math.Clamp(t.Opacity, 0.25, 1) * 255), bg.R, bg.G, bg.B));
+        // 与收纳盒走同一个纯函数：材质 / 材质强度 / 卡片颜色都要真的画出来。
+        var paint = t.ResolveCardPaint();
+        var brush = new SolidColorBrush(Color.FromArgb(paint.A, paint.R, paint.G, paint.B));
         brush.Freeze();
         _root.Background = brush;
     }
