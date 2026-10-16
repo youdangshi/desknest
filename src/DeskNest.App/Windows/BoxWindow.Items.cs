@@ -59,7 +59,7 @@ public sealed partial class BoxWindow
             Width = _box.IconSize + 34,
             Margin = new Thickness(3, 5, 3, 5),
             Cursor = Cursors.Hand,
-            ToolTip = ItemPath(item)
+            ToolTip = ItemPath(item) + "\n拖出去可移出盒子（拖到桌面/资源管理器）；双击打开"
         };
         stack.Children.Add(new Image
         {
@@ -87,6 +87,7 @@ public sealed partial class BoxWindow
         var menu = new ContextMenu();
         menu.Opened += (_, _) => BuildItemMenu(menu, item);
         stack.ContextMenu = menu;
+        AttachItemDrag(stack, item);
         stack.MouseLeftButtonDown += (_, e) =>
         {
             if (e.ClickCount == 2) { OpenItem(item); e.Handled = true; }
@@ -96,7 +97,7 @@ public sealed partial class BoxWindow
 
     private void AddListItem(ItemRecord item)
     {
-        var row = new Grid { Margin = new Thickness(2), Cursor = Cursors.Hand, ToolTip = ItemPath(item) };
+        var row = new Grid { Margin = new Thickness(2), Cursor = Cursors.Hand, ToolTip = ItemPath(item) + "\n拖出去可移出盒子（拖到桌面/资源管理器）；双击打开" };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -129,6 +130,7 @@ public sealed partial class BoxWindow
         var menu = new ContextMenu();
         menu.Opened += (_, _) => BuildItemMenu(menu, item);
         row.ContextMenu = menu;
+        AttachItemDrag(row, item);
         row.MouseLeftButtonDown += (_, e) =>
         {
             if (e.ClickCount == 2) { OpenItem(item); e.Handled = true; }
@@ -140,6 +142,53 @@ public sealed partial class BoxWindow
         => _box.ShowExtensions ? item.DisplayName : Path.GetFileNameWithoutExtension(item.DisplayName);
 
     private static string ItemPath(ItemRecord item) => item.StoredPath ?? item.SourcePath;
+
+    /// <summary>
+    /// 把盒内文件**拖出去**（拖到桌面、资源管理器、聊天窗口都行）：
+    /// 走标准 OLE 拖放，给出去的是文件当前的真实路径。
+    /// 如果目标执行的是"移动"（拖到桌面/资源管理器就是移动），文件已经被搬走了，
+    /// 这时盒子里不该再留着这条记录；如果是"复制"（拖进聊天窗口等），记录保留。
+    /// </summary>
+    private void AttachItemDrag(FrameworkElement source, ItemRecord item)
+    {
+        Point? pressedAt = null;
+        source.MouseLeftButtonDown += (_, e) => pressedAt = e.GetPosition(this);
+        source.MouseLeave += (_, _) => pressedAt = null;
+        source.MouseMove += (_, e) =>
+        {
+            if (pressedAt is not { } start) return;
+            if (e.LeftButton != MouseButtonState.Pressed) { pressedAt = null; return; }
+
+            var now = e.GetPosition(this);
+            // 用系统的拖动阈值，避免"手抖一下"就被当成拖拽（那样双击就打不开文件了）
+            if (Math.Abs(now.X - start.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(now.Y - start.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            pressedAt = null;
+
+            var path = ItemPath(item);
+            if (!FileOps.Exists(path))
+            {
+                Ui.Notifications.Toast($"「{item.DisplayName}」已不在磁盘上（可能被移动或删除）", 4);
+                return;
+            }
+
+            try
+            {
+                var data = new System.Windows.DataObject(System.Windows.DataFormats.FileDrop, new[] { path });
+                var effect = DragDrop.DoDragDrop(source, data, DragDropEffects.Copy | DragDropEffects.Move);
+                if (effect != DragDropEffects.Move) return;   // 复制：文件还在，记录留着
+
+                AppServices.Repo.DeleteItem(item.Id);
+                ReloadItems();
+                Ui.Notifications.Toast($"已把「{item.DisplayName}」移出盒子", 4);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"拖出盒子失败 {path}：{ex.Message}");
+                Ui.Notifications.Toast("拖出失败：" + ex.Message);
+            }
+        };
+    }
 
     private void BuildItemMenu(ContextMenu menu, ItemRecord item)
     {
