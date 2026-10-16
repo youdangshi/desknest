@@ -92,4 +92,28 @@ public static class WindowMove
             return false;
         }
     }
+
+    /// <summary>
+    /// 拖动/缩放期间临时把窗口变成 Topmost，结束后再取消。
+    /// 只靠"提到普通窗口最上层"不够：鼠标划过别的程序时，那个程序可能被激活而重新盖上来，
+    /// 拖动过程中窗口就被挡住了（用户实测反馈）。拖动这几秒用 Topmost 最稳。
+    /// </summary>
+    public static bool SetTemporaryTopmost(IntPtr hwnd, bool on)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+        try
+        {
+            const uint SWP_NOSIZE = 0x0001;
+            const uint SWP_NOMOVE = 0x0002;
+            const uint SWP_NOACTIVATE = 0x0010;
+            var insertAfter = on ? new IntPtr(-1) : new IntPtr(-2);   // HWND_TOPMOST / HWND_NOTOPMOST
+            return NativeMethods.SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0,
+                SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("设置拖动期置顶失败：" + ex.Message);
+            return false;
+        }
+    }
 }

@@ -31,6 +31,22 @@ public sealed partial class WidgetWindow
     private void BuildTodo()
     {
         _content.Children.Clear();
+        // 学 DeskBox：一个显眼的「＋ 添加待办」按钮，点了弹一个小编辑窗（标题 + 备注 + 颜色）。
+        // 除了内联输入，这条路任何情况下都能用（弹窗是普通窗口，键盘输入不受任何限制）。
+        var addRow = new Border
+        {
+            Padding = new Thickness(10, 8, 10, 8),
+            Margin = new Thickness(0, 4, 0, 6),
+            CornerRadius = new CornerRadius(Tokens.CornerCard),
+            Background = Theme.Desktop.CardBrush,
+            BorderThickness = new Thickness(1),
+            BorderBrush = Theme.Desktop.BorderBrush,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Child = UiKit.Text("＋ 添加待办", 12.5)
+        };
+        addRow.MouseLeftButtonUp += (_, _) => AddTodoDialog();
+        _content.Children.Add(addRow);
+
         // 带占位提示的输入框 + Enter 添加：以前是一个"空白色条"，看不出能打字（加上窗口收不到键盘，
         // 就变成"待办根本加不进去"）。现在写清楚用法。
         var input = UiKit.InputWithPlaceholder("输入待办，回车添加…", _ => { }, double.NaN);
@@ -95,6 +111,76 @@ public sealed partial class WidgetWindow
     }
 
     // ---------------- 随记 ----------------
+    /// <summary>
+    /// 新建待办的小窗口（学 DeskBox 的"＋ 添加待办"）：标题 + 备注 + 优先级。
+    /// 用普通对话框，键盘输入不受桌面层窗口的任何限制。
+    /// </summary>
+    private void AddTodoDialog()
+    {
+        var title = UiKit.InputWithPlaceholder("要做什么？", _ => { }, double.NaN);
+        var note = new TextBox
+        {
+            Height = 70,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12.5,
+            Margin = new Thickness(0, 6, 0, 6)
+        };
+        var priority = "中";
+        var prioRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
+        foreach (var label in new[] { "低", "中", "高" })
+        {
+            var captured = label;
+            var button = UiKit.Btn(label, () =>
+            {
+                priority = captured;
+                foreach (var child in prioRow.Children.OfType<Wpf.Ui.Controls.Button>())
+                    child.Appearance = child.Content as string == captured
+                        ? Wpf.Ui.Controls.ControlAppearance.Primary
+                        : Wpf.Ui.Controls.ControlAppearance.Secondary;
+            });
+            prioRow.Children.Add(button);
+        }
+
+        var ok = UiKit.Btn("添加", () => { }, true);
+        var cancel = UiKit.Btn("取消", () => { });
+        var dialog = new Window
+        {
+            Title = "添加待办",
+            Width = 420,
+            Height = 330,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Background = Theme.Current.BackgroundBrush,
+            Foreground = Theme.Current.ForegroundBrush,
+            Content = UiKit.Card(null, UiKit.Col(
+                UiKit.Text("添加待办", 15, bold: true),
+                title,
+                UiKit.Text("优先级", 12, secondary: true),
+                prioRow,
+                UiKit.Text("备注（可选）", 12, secondary: true),
+                note,
+                UiKit.Row(ok, cancel)))
+        };
+        cancel.Click += (_, _) => dialog.Close();
+        ok.Click += (_, _) =>
+        {
+            var text = title.Text.Trim();
+            if (text.Length == 0) return;
+            AppServices.Repo.Upsert(new TodoRecord
+            {
+                Title = text,
+                Note = note.Text.Trim(),
+                Priority = priority switch { "高" => 2, "低" => 0, _ => 1 },
+                CreatedAt = DateTimeOffset.Now
+            });
+            dialog.Close();
+            BuildTodo();
+            Ui.Notifications.Toast($"已添加待办「{text}」", 3);
+        };
+        dialog.Show();
+        title.Focus();
+    }
+
     private void BuildNote()
     {
         _content.Children.Clear();

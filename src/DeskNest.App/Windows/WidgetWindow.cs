@@ -103,9 +103,8 @@ public sealed partial class WidgetWindow : Window
             var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
             if (!Native.Win32.DesktopLayer.Attach(hwnd))
             {
-                // 与收纳盒一致：普通窗口 + 不抢焦点（见 DesktopLayer.Attach 的说明）
+                // 与收纳盒一致：可激活的普通窗口（"不抢焦点"会让里面所有输入框都打不了字）
                 Topmost = false;
-                Native.Win32.DesktopLayer.MakeNoActivate(hwnd);
             }
         };
         Closed += (_, _) => _timer?.Stop();

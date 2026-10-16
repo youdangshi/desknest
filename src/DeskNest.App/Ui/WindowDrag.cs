@@ -124,6 +124,12 @@ public static class WindowDrag
         var dragging = true;
         var moved = 0.0;
 
+        // 拖动这几秒强制置顶：否则鼠标划过别的程序时会被重新盖上来（用户实测）。
+        // 松手后按窗口原本的 Topmost 状态还原，不会把用户的设置改掉。
+        var wasTopmost = window.Topmost;
+        var hwndForDrag = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+        if (!wasTopmost) DeskNest.Native.Win32.WindowMove.SetTemporaryTopmost(hwndForDrag, true);
+
         Core.Log.Info($"开始拖动窗口（手动）：起点 {startLeft:0},{startTop:0}，DPI={scale:0.00}");
 
         void OnMove(object _, MouseEventArgs args)
@@ -145,6 +151,7 @@ public static class WindowDrag
             handle.ReleaseMouseCapture();
             handle.MouseMove -= OnMove;
             handle.MouseLeftButtonUp -= OnUp;
+            if (!wasTopmost) DeskNest.Native.Win32.WindowMove.SetTemporaryTopmost(hwndForDrag, false);
             Core.Log.Info($"结束拖动窗口：位移约 {moved:0} DIP，落点 {window.Left:0},{window.Top:0}");
             try { onDropped?.Invoke(args.GetPosition(handle) is var p ? handle.PointToScreen(p) : default); }
             catch (Exception ex) { Core.Log.Warn("拖动落点处理失败：" + ex.Message); }
@@ -242,6 +249,9 @@ public static class WindowDrag
             startHeight = window.Height;
             startLeft = window.Left;
             startTop = window.Top;
+            // 缩放期间同样强制置顶（不然拉边缘时会被别的窗口盖住，看着像"拉不动"）
+            var hwndResize = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+            if (!window.Topmost) DeskNest.Native.Win32.WindowMove.SetTemporaryTopmost(hwndResize, true);
             grip.CaptureMouse();
             e.Handled = true;
         };
@@ -264,6 +274,8 @@ public static class WindowDrag
             if (!resizing) return;
             resizing = false;
             grip.ReleaseMouseCapture();
+            var hwndResize = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+            if (!window.Topmost) DeskNest.Native.Win32.WindowMove.SetTemporaryTopmost(hwndResize, false);
             onFinished?.Invoke();
         };
         return grip;
