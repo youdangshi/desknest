@@ -111,6 +111,10 @@ public sealed partial class BoxWindow : Window
         PreviewKeyDown += OnBoxKeyDown;
 
         AllowDrop = true;
+        // 点一下就提到普通窗口最上层：桌面盒平时会被别的程序盖住（点不到也看不见），
+        // 点击那一刻提上来，用户立刻看得到；之后点别的程序，那个程序自然又盖回来。
+        PreviewMouseLeftButtonDown += (_, _) => RaiseToFront();
+        PreviewMouseRightButtonDown += (_, _) => RaiseToFront();
         DragEnter += OnDragEnter;
         DragOver += OnDragOver;
         DragLeave += (_, _) => _root.BorderBrush = Theme.Desktop.BorderBrush;
@@ -418,6 +422,17 @@ public sealed partial class BoxWindow : Window
     // ---------- 拖拽合并 ----------
 
     private string? _mergeTargetId;
+
+    /// <summary>把本盒子提到普通窗口最上层（不抢键盘焦点）。</summary>
+    private void RaiseToFront()
+    {
+        try
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero) Native.Win32.WindowMove.BringToTop(hwnd);
+        }
+        catch (Exception ex) { Log.Warn("盒子提到最前失败：" + ex.Message); }
+    }
 
     /// <summary>
     /// 合并提示：高亮边框 + 把提示写在底部的状态行上（不新增浮层，小盒子里也不挤）。

@@ -68,4 +68,28 @@ public static class WindowMove
 
     /// <summary>窗口当前的**物理像素**矩形（屏幕坐标）。WPF 的 Left/Top 是 DIP，别混用。</summary>
     public static (int X, int Y, int Width, int Height)? PhysicalBounds(IntPtr hwnd) => WindowShot.Bounds(hwnd);
+
+    /// <summary>
+    /// 把窗口提到**普通窗口的最上层**（不改激活状态、不动位置尺寸）。
+    /// 桌面盒平时待在普通窗口层，被别的程序盖住时就点不到、也看不见；
+    /// 点它的那一刻把它提上来，用户立刻看得到；随后点别的程序，那个程序自然又盖回来。
+    /// 不激活是刻意的：不抢键盘焦点，也不把用户的编辑器顶到后面去。
+    /// </summary>
+    public static bool BringToTop(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+        try
+        {
+            const uint SWP_NOSIZE = 0x0001;
+            const uint SWP_NOMOVE = 0x0002;
+            const uint SWP_NOACTIVATE = 0x0010;
+            return NativeMethods.SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("把窗口提到最前失败：" + ex.Message);
+            return false;
+        }
+    }
 }

@@ -92,6 +92,9 @@ public sealed partial class WidgetWindow : Window
 
         LocationChanged += (_, _) => Persist();
         SizeChanged += (_, _) => Persist();
+        // 点一下就提到最上层（和收纳盒一致）：组件平时会被别的程序盖住
+        PreviewMouseLeftButtonDown += (_, _) => RaiseToFront();
+        PreviewMouseRightButtonDown += (_, _) => RaiseToFront();
         SourceInitialized += (_, _) =>
         {
             // 和收纳盒一样：必须在第一次渲染之前挂载（挂晚了窗口会"看不见"）
@@ -156,6 +159,17 @@ public sealed partial class WidgetWindow : Window
         var brush = new SolidColorBrush(Color.FromArgb((byte)(Math.Clamp(t.Opacity, 0.25, 1) * 255), bg.R, bg.G, bg.B));
         brush.Freeze();
         _root.Background = brush;
+    }
+
+    /// <summary>把本组件提到普通窗口最上层（不抢键盘焦点）。</summary>
+    private void RaiseToFront()
+    {
+        try
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero) Native.Win32.WindowMove.BringToTop(hwnd);
+        }
+        catch (Exception ex) { Core.Log.Warn("组件提到最前失败：" + ex.Message); }
     }
 
     private void Persist()
