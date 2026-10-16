@@ -126,6 +126,31 @@ var dissolved = boxes.DissolveToDesktop(boxToDissolve, deskForTest);
 Check("解散后盒子记录消失", () => !dissolved.StillInDatabase && repo.Box(boxToDissolve.Id) is null);
 Check("文件确实回到了桌面目录", () => File.Exists(Path.Combine(deskForTest, "会被还回来的.txt")));
 
+Console.WriteLine("== 老数据库升级（新增列不能把页面读崩） ==");
+var legacyDir = Path.Combine(root, "legacy");
+Directory.CreateDirectory(legacyDir);
+var legacyDb = Path.Combine(legacyDir, "old.db");
+using (var old = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=" + legacyDb))
+{
+    old.Open();
+    // 模拟"加列之前"的库：todos 只有老列，且有一条老记录
+    using var cmd = old.CreateCommand();
+    cmd.CommandText = """
+      CREATE TABLE todos(id TEXT PRIMARY KEY, title TEXT, note TEXT, list_name TEXT, priority INTEGER,
+        repeat TEXT, due_at TEXT, remind_minutes_before INTEGER, is_done INTEGER, is_archived INTEGER,
+        created_at TEXT, completed_at TEXT);
+      INSERT INTO todos VALUES('t1','老待办','','默认清单',1,'None',NULL,5,0,0,'2026-01-01T00:00:00+08:00',NULL);
+      """;
+    cmd.ExecuteNonQuery();
+}
+Check("老库能被打开并自动补列，读待办不抛异常", () =>
+{
+    using var migrated = new Db(legacyDb);
+    var legacyRepo = new Repository(migrated);
+    var list = legacyRepo.Todos();
+    return list.Count == 1 && list[0].Title == "老待办" && !list[0].IsStarred && list[0].Color.Length == 0;
+});
+
 Console.WriteLine("== 任何颜色下都要看得清（人眼可读性） ==");
 // 1) 填色底（主按钮/徽标/选中项）上的文字：必须按底色亮度自动取白或近黑
 var accents = new[]

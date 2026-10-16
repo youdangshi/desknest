@@ -164,7 +164,12 @@ public sealed class Repository
             Priority = r.GetInt32(4), Repeat = r.GetString(5), DueAt = r.GetDateOrNull(6),
             RemindMinutesBefore = r.GetInt32(7), IsDone = r.GetInt32(8) != 0, IsArchived = r.GetInt32(9) != 0,
             CreatedAt = DateTimeOffset.Parse(r.GetString(10)), CompletedAt = r.GetDateOrNull(11),
-            Color = r.GetStringOrNull(12) ?? "", IsStarred = r.GetInt32(13) != 0, StepsJson = r.GetStringOrNull(14) ?? ""
+            // 注意：这三列是后加的（ALTER TABLE），老记录里是 NULL——
+            // 必须按可空读，否则读列表就抛 "The data is NULL at ordinal 13"，
+            // 整个待办页/概览页都打不开（真实踩过）。
+            Color = r.GetStringOrNull(12) ?? "",
+            IsStarred = !r.IsDBNull(13) && r.GetInt32(13) != 0,
+            StepsJson = r.GetStringOrNull(14) ?? ""
         });
 
     public void DeleteTodo(string id) => _db.Exec("DELETE FROM todos WHERE id=$id", ("$id", id));
