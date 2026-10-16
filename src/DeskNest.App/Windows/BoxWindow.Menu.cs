@@ -103,7 +103,33 @@ public sealed partial class BoxWindow
                 _box.ShowExtensions = !_box.ShowExtensions;
                 AppServices.Repo.Upsert(_box);
                 ReloadItems();
-            }, checkable: true, isChecked: _box.ShowExtensions)
+            }, checkable: true, isChecked: _box.ShowExtensions),
+            new Separator(),
+            // 文字大小与文件名行数以前只有数据字段、界面上没有入口（用户反馈"样式没法调"）
+            Sub("文字大小",
+                new (string Label, double Value)[] { ("小", 10), ("中", 11.5), ("大", 13), ("特大", 15) }
+                    .Select(s => Item(s.Label, () => SetTextSize(s.Value), checkable: true,
+                        isChecked: Math.Abs(_box.TextSize - s.Value) < 0.3))
+                    .ToArray()),
+            Sub("文件名行数",
+                new (string Label, int Value)[] { ("1 行", 1), ("2 行", 2), ("3 行", 3) }
+                    .Select(s => Item(s.Label, () => SetFileNameLines(s.Value), checkable: true, isChecked: _box.FileNameLines == s.Value))
+                    .ToArray()),
+            Item("把这套显示样式套用到所有盒", () =>
+            {
+                foreach (var other in AppServices.Repo.Boxes())
+                {
+                    other.ViewMode = _box.ViewMode;
+                    other.IconSize = _box.IconSize;
+                    other.TextSize = _box.TextSize;
+                    other.FileNameLines = _box.FileNameLines;
+                    other.HideFileName = _box.HideFileName;
+                    other.ShowExtensions = _box.ShowExtensions;
+                    AppServices.Repo.Upsert(other);
+                }
+                if (App.Current is App app) app.Desktop.ApplyLookToAll();
+                Ui.Notifications.Toast("已把当前盒的显示样式套用到所有盒", 4);
+            })
         };
     }
 
@@ -295,6 +321,23 @@ public sealed partial class BoxWindow
         _box.IconSize = size;
         AppServices.Repo.Upsert(_box);
         ApplyLook();
+        ReloadItems();
+    }
+
+    /// <summary>文件名文字大小（以前只有数据字段，界面没有入口）。</summary>
+    private void SetTextSize(double size)
+    {
+        _box.TextSize = size;
+        AppServices.Repo.Upsert(_box);
+        ApplyLook();
+        ReloadItems();
+    }
+
+    /// <summary>文件名最多显示几行。</summary>
+    private void SetFileNameLines(int lines)
+    {
+        _box.FileNameLines = Math.Clamp(lines, 1, 3);
+        AppServices.Repo.Upsert(_box);
         ReloadItems();
     }
 
