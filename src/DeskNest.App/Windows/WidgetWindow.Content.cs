@@ -17,7 +17,7 @@ public sealed partial class WidgetWindow
         _content.Children.Clear();
         switch (_widget.Kind)
         {
-            case WidgetKind.Todo: BuildTodo(); break;
+            case WidgetKind.Todo: BuildTodoPage(); break;
             case WidgetKind.QuickNote: BuildNote(); break;
             case WidgetKind.Weather: BuildWeather(); break;
             case WidgetKind.Music: BuildMusic(); break;
@@ -59,7 +59,7 @@ public sealed partial class WidgetWindow
             if (title.Length == 0) return;
             AppServices.Repo.Upsert(new TodoRecord { Title = title, CreatedAt = DateTimeOffset.Now });
             input.Text = "";
-            BuildTodo();
+            BuildTodoPage();
         };
         _content.Children.Add(input);
 
@@ -74,7 +74,7 @@ public sealed partial class WidgetWindow
                 todo.IsDone = true;
                 todo.CompletedAt = DateTimeOffset.Now;
                 AppServices.Repo.Upsert(todo);
-                BuildTodo();
+                BuildTodoPage();
             };
             var text = new TextBlock
             {
@@ -92,9 +92,9 @@ public sealed partial class WidgetWindow
             row.MouseRightButtonUp += (_, e) =>
             {
                 var menu = new ContextMenu();
-                menu.Items.Add(MenuAction("设为高优先级", () => { todo.Priority = 2; AppServices.Repo.Upsert(todo); BuildTodo(); }));
-                menu.Items.Add(MenuAction("设为中优先级", () => { todo.Priority = 1; AppServices.Repo.Upsert(todo); BuildTodo(); }));
-                menu.Items.Add(MenuAction("设为低优先级", () => { todo.Priority = 0; AppServices.Repo.Upsert(todo); BuildTodo(); }));
+                menu.Items.Add(MenuAction("设为高优先级", () => { todo.Priority = 2; AppServices.Repo.Upsert(todo); BuildTodoPage(); }));
+                menu.Items.Add(MenuAction("设为中优先级", () => { todo.Priority = 1; AppServices.Repo.Upsert(todo); BuildTodoPage(); }));
+                menu.Items.Add(MenuAction("设为低优先级", () => { todo.Priority = 0; AppServices.Repo.Upsert(todo); BuildTodoPage(); }));
                 menu.Items.Add(MenuAction("提醒（5 分钟后）", () =>
                 {
                     todo.DueAt = DateTimeOffset.Now.AddMinutes(5);
@@ -102,7 +102,7 @@ public sealed partial class WidgetWindow
                     AppServices.Repo.Upsert(todo);
                     Ui.Notifications.Toast("已设置 5 分钟后提醒");
                 }));
-                menu.Items.Add(MenuAction("删除", () => { AppServices.Repo.DeleteTodo(todo.Id); BuildTodo(); }));
+                menu.Items.Add(MenuAction("删除", () => { AppServices.Repo.DeleteTodo(todo.Id); BuildTodoPage(); }));
                 menu.IsOpen = true;
             };
             _content.Children.Add(row);
@@ -174,7 +174,7 @@ public sealed partial class WidgetWindow
                 CreatedAt = DateTimeOffset.Now
             });
             dialog.Close();
-            BuildTodo();
+            BuildTodoPage();
             Ui.Notifications.Toast($"已添加待办「{text}」", 3);
         };
         dialog.Show();

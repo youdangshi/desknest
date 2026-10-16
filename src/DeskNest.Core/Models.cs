@@ -126,6 +126,12 @@ public sealed class TodoRecord
     public int RemindMinutesBefore { get; set; } = 5;
     public bool IsDone { get; set; }
     public bool IsArchived { get; set; }
+    /// <summary>颜色标记（空＝无颜色），学 DeskBox 那排色块。</summary>
+    public string Color { get; set; } = "";
+    /// <summary>收藏（星标）。</summary>
+    public bool IsStarred { get; set; }
+    /// <summary>步骤（子任务），JSON：[{"title":"…","done":false}]。</summary>
+    public string StepsJson { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
     public DateTimeOffset? CompletedAt { get; set; }
 }

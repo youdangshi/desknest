@@ -145,14 +145,16 @@ public sealed class Repository
 
     // ---------- Todos / Notes ----------
     public void Upsert(TodoRecord t) => _db.Exec("""
-      INSERT INTO todos VALUES($id,$ti,$no,$ln,$pr,$rp,$du,$rm,$dn,$ar,$ca,$co)
+      INSERT INTO todos VALUES($id,$ti,$no,$ln,$pr,$rp,$du,$rm,$dn,$ar,$ca,$co,$clr,$star,$stp)
       ON CONFLICT(id) DO UPDATE SET title=$ti,note=$no,list_name=$ln,priority=$pr,repeat=$rp,due_at=$du,
-        remind_minutes_before=$rm,is_done=$dn,is_archived=$ar,created_at=$ca,completed_at=$co;
+        remind_minutes_before=$rm,is_done=$dn,is_archived=$ar,created_at=$ca,completed_at=$co,
+        color=$clr,is_starred=$star,steps_json=$stp;
       """,
       ("$id", t.Id), ("$ti", t.Title), ("$no", t.Note), ("$ln", t.ListName), ("$pr", t.Priority),
       ("$rp", t.Repeat), ("$du", t.DueAt?.ToString("o")), ("$rm", t.RemindMinutesBefore),
       ("$dn", t.IsDone ? 1 : 0), ("$ar", t.IsArchived ? 1 : 0), ("$ca", t.CreatedAt.ToString("o")),
-      ("$co", t.CompletedAt?.ToString("o")));
+      ("$co", t.CompletedAt?.ToString("o")),
+      ("$clr", t.Color), ("$star", t.IsStarred ? 1 : 0), ("$stp", t.StepsJson));
 
     public List<TodoRecord> Todos(bool includeArchived = false) => _db.Query(
         includeArchived ? "SELECT * FROM todos ORDER BY priority DESC, due_at" : "SELECT * FROM todos WHERE is_archived=0 ORDER BY priority DESC, due_at",
@@ -161,7 +163,8 @@ public sealed class Repository
             Id = r.GetString(0), Title = r.GetString(1), Note = r.GetStringOrNull(2), ListName = r.GetString(3),
             Priority = r.GetInt32(4), Repeat = r.GetString(5), DueAt = r.GetDateOrNull(6),
             RemindMinutesBefore = r.GetInt32(7), IsDone = r.GetInt32(8) != 0, IsArchived = r.GetInt32(9) != 0,
-            CreatedAt = DateTimeOffset.Parse(r.GetString(10)), CompletedAt = r.GetDateOrNull(11)
+            CreatedAt = DateTimeOffset.Parse(r.GetString(10)), CompletedAt = r.GetDateOrNull(11),
+            Color = r.GetStringOrNull(12) ?? "", IsStarred = r.GetInt32(13) != 0, StepsJson = r.GetStringOrNull(14) ?? ""
         });
 
     public void DeleteTodo(string id) => _db.Exec("DELETE FROM todos WHERE id=$id", ("$id", id));

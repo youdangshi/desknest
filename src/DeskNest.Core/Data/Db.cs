@@ -54,7 +54,7 @@ public sealed class Db : IDisposable
         CREATE TABLE IF NOT EXISTS todos(
           id TEXT PRIMARY KEY, title TEXT, note TEXT, list_name TEXT, priority INTEGER, repeat TEXT,
           due_at TEXT, remind_minutes_before INTEGER, is_done INTEGER, is_archived INTEGER,
-          created_at TEXT, completed_at TEXT);
+          created_at TEXT, completed_at TEXT, color TEXT, is_starred INTEGER, steps_json TEXT);
         CREATE TABLE IF NOT EXISTS notes(
           id TEXT PRIMARY KEY, title TEXT, body TEXT, format TEXT, is_pinned INTEGER, tags TEXT, updated_at TEXT);
         CREATE TABLE IF NOT EXISTS rules(
@@ -90,6 +90,9 @@ public sealed class Db : IDisposable
 
         // 老版本的库缺列就补上（SQLite 的 ADD COLUMN 会追加到末尾，正好与 SELECT * 的顺序一致）
         EnsureColumn("boxes", "title_style", "TEXT");
+        EnsureColumn("todos", "color", "TEXT");
+        EnsureColumn("todos", "is_starred", "INTEGER");
+        EnsureColumn("todos", "steps_json", "TEXT");
     }
 
     /// <summary>表里没有这一列就加上；已有则什么都不做。</summary>

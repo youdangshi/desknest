@@ -325,7 +325,7 @@ public sealed partial class WidgetWindow : Window
                 UpdateSystemMonitor();
                 break;
             case WidgetKind.Todo:
-                BuildTodo();
+                BuildTodoPage();
                 break;
             case WidgetKind.Glance:
                 BuildGlance();
