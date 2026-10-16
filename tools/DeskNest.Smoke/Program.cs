@@ -61,6 +61,26 @@ repo.Upsert(throwaway);
 var outcome = boxes.Delete(throwaway);
 Check("删除后记录不再存在", () => !outcome.StillInDatabase && repo.Box(throwaway.Id) is null);
 
+Console.WriteLine("== 拖拽合并的落点判定 ==");
+var self = new BoxHit("me", "本盒", 0, 0, 400, 500, null, true);
+var other = new BoxHit("other", "另一个", 600, 100, 320, 420, null, true);
+var sameGroup = new BoxHit("same", "同组盒", 600, 100, 320, 420, "g1", true);
+var hidden = new BoxHit("hidden", "隐藏盒", 600, 100, 320, 420, null, false);
+var small = new BoxHit("small", "小盒", 620, 120, 100, 100, null, true);
+var otherGrouped = new BoxHit("other2", "别组盒", 600, 100, 320, 420, "g2", true);
+
+var targets = new[] { other, hidden };
+Check("落在另一个盒子上会被命中", () => BoxDropTarget.Pick(700, 300, targets, "me", null)?.Id == "other");
+Check("落在自己身上不命中", () => BoxDropTarget.Pick(200, 250, new[] { self }, "me", null) is null);
+Check("落在空白处不命中", () => BoxDropTarget.Pick(1500, 900, targets, "me", null) is null);
+Check("隐藏的盒子不会被当成落点", () => BoxDropTarget.Pick(700, 300, new[] { hidden }, "me", null) is null);
+Check("已经在同一组里的盒子不再提示合并", () => BoxDropTarget.Pick(700, 300, new[] { sameGroup }, "me", "g1") is null);
+Check("对方在别的组里时仍然可合并（不会因为自己没组就跳过）",
+    () => BoxDropTarget.Pick(700, 300, new[] { otherGrouped }, "me", null)?.Id == "other2");
+Check("边缘外 20 像素仍算命中（放宽 24）", () => BoxDropTarget.Pick(612, 300, targets, "me", null)?.Id == "other");
+Check("边缘外 40 像素不算命中（宽容度是 24）", () => BoxDropTarget.Pick(560, 300, targets, "me", null) is null);
+Check("大盒子里套小盒子时选小的", () => BoxDropTarget.Pick(660, 160, new[] { other, small }, "me", null)?.Id == "small");
+
 try { Directory.Delete(root, true); } catch { }
 
 Console.WriteLine();

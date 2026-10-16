@@ -123,8 +123,11 @@ public sealed partial class BoxWindow : Window
         // 标题栏只是"顺手"，盒子空白处同样可以拖——新盒子大半是空的，
         // 用户十有八九是抓着中间往下拖的（之前只有 30px 标题栏能拖，看起来就是"拖不动"）
         Action hintLocked = () => Ui.Notifications.Toast("位置已锁定：右键盒子 → 取消「锁定位置」即可拖动", 4);
-        WindowDrag.EnableMove(this, _titleBar, () => _box.LockPosition, PersistGeometryNow, onBlocked: hintLocked);
-        WindowDrag.EnableMove(this, _root, () => _box.LockPosition, PersistGeometryNow, CanStartBodyDrag, onBlocked: hintLocked);
+        // 拖到别的盒子上就提示合并、松手即合并（菜单里的「添加格子 › 并入本组」也保留）
+        WindowDrag.EnableMove(this, _titleBar, () => _box.LockPosition, PersistGeometryNow,
+            onBlocked: hintLocked, onDragging: OnDraggingForMerge, onDropped: OnDroppedForMerge);
+        WindowDrag.EnableMove(this, _root, () => _box.LockPosition, PersistGeometryNow, CanStartBodyDrag,
+            onBlocked: hintLocked, onDragging: OnDraggingForMerge, onDropped: OnDroppedForMerge);
         _titleBar.MouseLeftButtonDown += TitleBar_MouseDown;
         MouseWheel += (_, e) =>
         {
@@ -408,6 +411,95 @@ public sealed partial class BoxWindow : Window
             node = VisualTreeHelper.GetParent(node);
         }
         return true;
+    }
+
+    // ---------- 拖拽合并 ----------
+
+    private string? _mergeTargetId;
+
+    /// <summary>
+    /// 合并提示：高亮边框 + 把提示写在底部的状态行上（不新增浮层，小盒子里也不挤）。
+    /// 传 null 恢复原样。
+    /// </summary>
+    public void SetDropHint(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            _root.BorderThickness = new Thickness(1);
+            _root.BorderBrush = Theme.Desktop.BorderBrush;
+            _status.Foreground = Theme.Desktop.SecondaryBrush;
+            ReloadItems();          // 状态行文案交回给常规刷新
+            return;
+        }
+        _root.BorderThickness = new Thickness(2);
+        _root.BorderBrush = Theme.Desktop.AccentBrush;
+        _status.Foreground = Theme.Desktop.AccentBrush;
+        _status.Text = text;
+    }
+
+    /// <summary>拖动过程中找"松手会并到哪个盒子"。</summary>
+    private BoxHit? FindMergeTarget(Point screenPoint)
+    {
+        if (App.Current is not App app) return null;
+        var hits = new List<BoxHit>();
+        foreach (var (id, win) in app.Desktop.Boxes)
+        {
+            if (ReferenceEquals(win, this) || !win.IsVisible) continue;
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(win).Handle;
+            if (WindowShot.Bounds(hwnd) is not { } rect) continue;
+            hits.Add(new BoxHit(id, win.Box.Name, rect.X, rect.Y, rect.W, rect.H, win.Box.GroupId, true));
+        }
+        return BoxDropTarget.Pick((int)Math.Round(screenPoint.X), (int)Math.Round(screenPoint.Y),
+            hits, _box.Id, _box.GroupId);
+    }
+
+    private void OnDraggingForMerge(Point screenPoint)
+    {
+        var target = FindMergeTarget(screenPoint);
+        var targetId = target?.Id;
+        if (_mergeTargetId == targetId) return;   // 只在"换目标"时动界面，别每帧都刷
+
+        if (_mergeTargetId is not null && (App.Current as App)?.Desktop.Boxes.TryGetValue(_mergeTargetId, out var previous) == true)
+            previous!.SetDropHint(null);
+        _mergeTargetId = targetId;
+
+        if (target is null)
+        {
+            SetDropHint(null);
+            return;
+        }
+        if ((App.Current as App)?.Desktop.Boxes.TryGetValue(target.Id, out var win) == true)
+            win!.SetDropHint("松开即合并到此盒");
+        SetDropHint($"松开合并到「{target.Name}」");
+    }
+
+    private void OnDroppedForMerge(Point screenPoint)
+    {
+        // 松手时再判定一次，避免"最后一次移动没触发"导致并错
+        var target = FindMergeTarget(screenPoint);
+        var previousId = _mergeTargetId;
+        _mergeTargetId = null;
+        SetDropHint(null);
+        if (previousId is not null && (App.Current as App)?.Desktop.Boxes.TryGetValue(previousId, out var previous) == true)
+            previous!.SetDropHint(null);
+        if (target is null) return;
+
+        try
+        {
+            if (App.Current is not App app) return;
+            var keep = AppServices.Repo.Box(target.Id);
+            if (keep is null) return;
+            // 保留被拖到的那个盒子（用户是"往它身上放"），把自己并进它的组
+            var group = AppServices.Boxes.MergeInto(keep, _box);
+            app.Desktop.ReloadBoxes();
+            app.Desktop.SwitchGroupTo(group.Id, group.ActiveMemberId);
+            Ui.Notifications.Toast($"已把「{_box.Name}」并进「{group.Name}」，点标题栏标签或滚轮切换", 6);
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"拖拽合并失败：{ex}");
+            Ui.Notifications.Toast("合并失败：" + ex.Message);
+        }
     }
 
     private void PersistGeometry()

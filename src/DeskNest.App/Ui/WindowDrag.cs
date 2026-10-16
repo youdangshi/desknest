@@ -64,9 +64,11 @@ public static class WindowDrag
     /// <param name="canStart">返回 false 时这次按下不触发拖动（比如点在盒子里的图标/按钮上）。</param>
     /// <param name="preferNative">非收纳盒的普通窗口可以传 true，交给系统拖动（更跟手）。</param>
     /// <param name="onBlocked">被"锁定位置"挡住时的回调，用来提示用户，而不是默默没反应。</param>
+    /// <param name="onDragging">拖动过程中每次移动都会回调（屏幕物理像素坐标），用于实时提示"松开会合并到谁"。</param>
+    /// <param name="onDropped">松开时回调一次（屏幕物理像素坐标），用于真正执行落点动作。</param>
     public static void EnableMove(Window window, FrameworkElement handle, Func<bool>? locked = null,
         Action? onFinished = null, Func<object?, bool>? canStart = null, bool preferNative = false,
-        Action? onBlocked = null)
+        Action? onBlocked = null, Action<Point>? onDragging = null, Action<Point>? onDropped = null)
     {
         // 关键：容器必须有背景（透明也行）才参与命中测试。
         // 背景为 null 的 StackPanel/Border 在空白处"抓空气"——这就是"拖不动"的根因。
@@ -104,13 +106,14 @@ public static class WindowDrag
 
             // 桌面盒走这里：自己算屏幕增量。用 PointToScreen 而不是元素内坐标，
             // 这样即使拖动过程中窗口被改大小、元素重排，位移依然准。
-            BeginManualDrag(window, handle, e, onFinished);
+            BeginManualDrag(window, handle, e, onFinished, onDragging, onDropped);
             e.Handled = true;
         };
     }
 
     /// <summary>手动拖动：按下时记住屏幕坐标，移动时按增量挪窗口，松开时落盘。</summary>
-    private static void BeginManualDrag(Window window, FrameworkElement handle, MouseButtonEventArgs e, Action? onFinished)
+    private static void BeginManualDrag(Window window, FrameworkElement handle, MouseButtonEventArgs e,
+        Action? onFinished, Action<Point>? onDragging = null, Action<Point>? onDropped = null)
     {
         // PointToScreen 给的是**物理像素**，而 Window.Left/Top 是**与 DPI 无关的单位(DIP)**。
         // 125% 缩放下直接相减会让盒子按鼠标的 1.25 倍跑——必须换算。
@@ -132,6 +135,7 @@ public static class WindowDrag
             window.Left = startLeft + dx;
             window.Top = startTop + dy;
             moved = Math.Max(moved, Math.Abs(dx) + Math.Abs(dy));
+            onDragging?.Invoke(now);
         }
 
         void OnUp(object _, MouseButtonEventArgs args)
@@ -142,6 +146,8 @@ public static class WindowDrag
             handle.MouseMove -= OnMove;
             handle.MouseLeftButtonUp -= OnUp;
             Core.Log.Info($"结束拖动窗口：位移约 {moved:0} DIP，落点 {window.Left:0},{window.Top:0}");
+            try { onDropped?.Invoke(args.GetPosition(handle) is var p ? handle.PointToScreen(p) : default); }
+            catch (Exception ex) { Core.Log.Warn("拖动落点处理失败：" + ex.Message); }
             onFinished?.Invoke();
         }
 
