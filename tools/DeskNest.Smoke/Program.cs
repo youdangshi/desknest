@@ -81,6 +81,21 @@ Check("边缘外 20 像素仍算命中（放宽 24）", () => BoxDropTarget.Pick
 Check("边缘外 40 像素不算命中（宽容度是 24）", () => BoxDropTarget.Pick(560, 300, targets, "me", null) is null);
 Check("大盒子里套小盒子时选小的", () => BoxDropTarget.Pick(660, 160, new[] { other, small }, "me", null)?.Id == "small");
 
+Console.WriteLine("== 组件合并（性能 / 待办 等桌面组件） ==");
+var w1 = new WidgetRecord { Kind = WidgetKind.SystemMonitor, Name = "性能", X = 100, Y = 100, Width = 240, Height = 150 };
+var w2 = new WidgetRecord { Kind = WidgetKind.Todo, Name = "待办", X = 700, Y = 500, Width = 300, Height = 400 };
+repo.Upsert(w1);
+repo.Upsert(w2);
+var widgetGroup = boxes.MergeWidgets(w1, w2);
+Check("组件合并后两个组件在同一个组里",
+    () => repo.Widgets().First(w => w.Id == w1.Id).GroupId == widgetGroup.Id
+       && repo.Widgets().First(w => w.Id == w2.Id).GroupId == widgetGroup.Id);
+Check("组件组里两个成员、当前显示发起合并的那个",
+    () => widgetGroup.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries).Length == 2
+       && widgetGroup.ActiveMemberId == w1.Id);
+Check("被并入的组件挪到同一位置与尺寸",
+    () => repo.Widgets().First(w => w.Id == w2.Id).X == 100 && repo.Widgets().First(w => w.Id == w2.Id).Width == 240);
+
 Console.WriteLine("== 任何颜色下都要看得清（人眼可读性） ==");
 // 1) 填色底（主按钮/徽标/选中项）上的文字：必须按底色亮度自动取白或近黑
 var accents = new[]

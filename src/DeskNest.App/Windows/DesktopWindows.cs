@@ -76,6 +76,20 @@ public sealed class DesktopWindows
                 win.RefreshGroupTabsPublic();   // 组内标签要重新画，否则并进来的新成员不出现在标签条上
             }
         }
+        // 组件同理：同一组只显示当前选中的那个
+        foreach (var widget in AppServices.Repo.Widgets())
+        {
+            var keepVisible = true;
+            if (widget.GroupId is { } gid && activeByGroup.TryGetValue(gid, out var active) && active is not null)
+                keepVisible = string.Equals(active, widget.Id, StringComparison.OrdinalIgnoreCase);
+
+            if (!widget.IsVisible || !keepVisible)
+            {
+                if (_widgets.TryGetValue(widget.Id, out var hidden)) hidden.Hide();
+                continue;
+            }
+            ShowWidget(widget);
+        }
     }
 
     public void NotifyBoxClosed(string boxId) => _boxes.Remove(boxId);
@@ -294,16 +308,25 @@ public sealed class DesktopWindows
         if (group is null) return;
         foreach (var id in group.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
-            if (!_boxes.TryGetValue(id, out var win)) continue;
-            if (id == boxId)
+            if (_boxes.TryGetValue(id, out var win))
             {
-                win.Show();
-                win.ReloadItems();
-                win.RefreshGroupTabsPublic();
+                if (id == boxId)
+                {
+                    win.Show();
+                    win.ReloadItems();
+                    win.RefreshGroupTabsPublic();
+                }
+                else
+                {
+                    win.Hide();
+                }
+                continue;
             }
-            else
+            // 组件也能成组：切换时同样只显示选中的那个
+            if (_widgets.TryGetValue(id, out var widget))
             {
-                win.Hide();
+                if (id == boxId) { widget.Show(); widget.Refresh(); }
+                else widget.Hide();
             }
         }
         group.ActiveMemberId = boxId;

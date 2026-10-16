@@ -22,6 +22,9 @@ public sealed partial class WidgetWindow : Window
 
     public string WidgetId => _widget.Id;
 
+    /// <summary>本组件的数据记录（合并/多显示器统计等外部逻辑要用）。</summary>
+    public WidgetRecord Record => _widget;
+
     public WidgetWindow(WidgetRecord widget)
     {
         _widget = widget;
@@ -97,6 +100,10 @@ public sealed partial class WidgetWindow : Window
         PreviewMouseRightButtonDown += (_, _) => RaiseToFront();
         // 让组件里的输入框真的能打字（不抢焦点的窗口默认收不到键盘，见 DesktopInput 的说明）
         DesktopInput.EnableTyping(this);
+        // 拖到另一个组件上就合并（和收纳盒一致）；组内用滚轮切换成员
+        WindowDrag.EnableMove(this, _root, () => false, Persist,
+            onDragging: OnDraggingForMerge, onDropped: OnDroppedForMerge);
+        MouseWheel += (_, e) => SwitchGroup(-Math.Sign(e.Delta));
         SourceInitialized += (_, _) =>
         {
             // 和收纳盒一样：必须在第一次渲染之前挂载（挂晚了窗口会"看不见"）
@@ -171,6 +178,92 @@ public sealed partial class WidgetWindow : Window
             if (hwnd != IntPtr.Zero) Native.Win32.WindowMove.BringToTop(hwnd);
         }
         catch (Exception ex) { Core.Log.Warn("组件提到最前失败：" + ex.Message); }
+    }
+
+    // ---------- 组件合并（和收纳盒同一套规则） ----------
+
+    private string? _mergeTargetId;
+
+    private void SetDropHint(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            _root.BorderThickness = new Thickness(1);
+            _root.BorderBrush = Theme.Desktop.BorderBrush;
+            return;
+        }
+        _root.BorderThickness = new Thickness(2);
+        _root.BorderBrush = Theme.Desktop.AccentBrush;
+    }
+
+    private BoxHit? FindMergeTarget(Point screenPoint)
+    {
+        if (App.Current is not App app) return null;
+        var hits = new List<BoxHit>();
+        foreach (var (id, win) in app.Desktop.Widgets)
+        {
+            if (ReferenceEquals(win, this) || !win.IsVisible) continue;
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(win).Handle;
+            if (WindowShot.Bounds(hwnd) is not { } rect) continue;
+            hits.Add(new BoxHit(id, win.Record.Name, rect.X, rect.Y, rect.W, rect.H, win.Record.GroupId, true));
+        }
+        return BoxDropTarget.Pick((int)Math.Round(screenPoint.X), (int)Math.Round(screenPoint.Y),
+            hits, _widget.Id, _widget.GroupId);
+    }
+
+    private void OnDraggingForMerge(Point screenPoint)
+    {
+        var target = FindMergeTarget(screenPoint);
+        var targetId = target?.Id;
+        if (_mergeTargetId == targetId) return;
+        if (_mergeTargetId is not null && (App.Current as App)?.Desktop.Widgets.TryGetValue(_mergeTargetId, out var previous) == true)
+            previous!.SetDropHint(null);
+        _mergeTargetId = targetId;
+        if (target is null) { SetDropHint(null); return; }
+        if ((App.Current as App)?.Desktop.Widgets.TryGetValue(target.Id, out var win) == true)
+            win!.SetDropHint("松开即合并到此组件");
+        SetDropHint($"松开合并到「{target.Name}」");
+    }
+
+    private void OnDroppedForMerge(Point screenPoint)
+    {
+        var target = FindMergeTarget(screenPoint);
+        var previousId = _mergeTargetId;
+        _mergeTargetId = null;
+        SetDropHint(null);
+        if (previousId is not null && (App.Current as App)?.Desktop.Widgets.TryGetValue(previousId, out var previous) == true)
+            previous!.SetDropHint(null);
+        if (target is null) return;
+
+        try
+        {
+            if (App.Current is not App app) return;
+            var keep = AppServices.Repo.Widgets().FirstOrDefault(w => w.Id == target.Id);
+            if (keep is null) return;
+            var group = AppServices.Boxes.MergeWidgets(keep, _widget);
+            app.Desktop.ReloadBoxes();
+            app.Desktop.SwitchGroupTo(group.Id, group.ActiveMemberId);
+            Ui.Notifications.Toast($"已把「{_widget.Name}」并进「{group.Name}」，滚轮切换", 6);
+        }
+        catch (Exception ex)
+        {
+            Core.Log.Error($"组件合并失败：{ex}");
+            Ui.Notifications.Toast("合并失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>组内滚轮切换成员。</summary>
+    private void SwitchGroup(int direction)
+    {
+        if (_widget.GroupId is null) return;
+        var group = AppServices.Repo.Groups().FirstOrDefault(g => g.Id == _widget.GroupId);
+        if (group is null) return;
+        var ids = group.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (ids.Count <= 1) return;
+        var index = ids.IndexOf(_widget.Id);
+        if (index < 0) return;
+        var next = ids[(index + direction + ids.Count) % ids.Count];
+        (App.Current as App)?.Desktop.SwitchGroupTo(group.Id, next);
     }
 
     private void Persist()

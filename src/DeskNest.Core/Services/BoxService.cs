@@ -114,4 +114,49 @@ public sealed class BoxService
         if (members.Length == 0) return null;
         return members.Contains(group.ActiveMemberId) ? group.ActiveMemberId : members[0];
     }
+
+    /// <summary>
+    /// 把两个**桌面组件**（性能 / 待办 / 随记…）合并到同一个位置，用滚轮或标签切换。
+    /// 与盒子共用同一套"组"结构（成员 + 当前成员 + 位置尺寸）。
+    /// </summary>
+    public BoxGroupRecord MergeWidgets(WidgetRecord keep, WidgetRecord other)
+    {
+        if (keep.Id == other.Id) throw new InvalidOperationException("不能把组件并进它自己");
+
+        var group = keep.GroupId is null
+            ? null
+            : _repo.Groups().FirstOrDefault(g => g.Id == keep.GroupId);
+        if (group is null)
+        {
+            group = new BoxGroupRecord
+            {
+                Name = keep.Name + " 组",
+                MemberIds = keep.Id,
+                ActiveMemberId = keep.Id,
+                MarginX = keep.X,
+                MarginY = keep.Y,
+                Width = keep.Width,
+                Height = keep.Height
+            };
+            keep.GroupId = group.Id;
+            _repo.Upsert(keep);
+        }
+
+        var members = group.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (!members.Contains(other.Id)) members.Add(other.Id);
+        group.MemberIds = string.Join(";", members);
+        if (string.IsNullOrEmpty(group.ActiveMemberId) || !members.Contains(group.ActiveMemberId))
+            group.ActiveMemberId = keep.Id;
+        _repo.Upsert(group);
+
+        other.GroupId = group.Id;
+        other.X = group.MarginX;
+        other.Y = group.MarginY;
+        if (group.Width > 0) other.Width = group.Width;
+        if (group.Height > 0) other.Height = group.Height;
+        _repo.Upsert(other);
+
+        Log.Info($"已把组件「{other.Name}」并进「{group.Name}」（成员 {members.Count} 个）");
+        return group;
+    }
 }
