@@ -115,6 +115,8 @@ public sealed partial class BoxWindow : Window
         // 点击那一刻提上来，用户立刻看得到；之后点别的程序，那个程序自然又盖回来。
         PreviewMouseLeftButtonDown += (_, _) => RaiseToFront();
         PreviewMouseRightButtonDown += (_, _) => RaiseToFront();
+        // 盒内（待办盒/随记盒）的输入框也要能打字
+        DesktopInput.EnableTyping(this);
         // 双击盒子（标题栏或空白处）＝ 隐藏，和 DeskBox 一致（盒内文件的双击被文件项自己处理掉，不会冲突）
         _root.MouseLeftButtonDown += (_, e) =>
         {

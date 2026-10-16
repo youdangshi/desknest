@@ -31,7 +31,11 @@ public sealed partial class WidgetWindow
     private void BuildTodo()
     {
         _content.Children.Clear();
-        var input = new TextBox { FontSize = 12.5, Margin = new Thickness(0, 4, 0, 6) };
+        // 带占位提示的输入框 + Enter 添加：以前是一个"空白色条"，看不出能打字（加上窗口收不到键盘，
+        // 就变成"待办根本加不进去"）。现在写清楚用法。
+        var input = UiKit.InputWithPlaceholder("输入待办，回车添加…", _ => { }, double.NaN);
+        input.FontSize = 12.5;
+        input.Margin = new Thickness(0, 4, 0, 6);
         input.KeyDown += (_, e) =>
         {
             if (e.Key != Key.Enter) return;

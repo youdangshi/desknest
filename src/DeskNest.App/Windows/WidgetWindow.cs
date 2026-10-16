@@ -95,6 +95,8 @@ public sealed partial class WidgetWindow : Window
         // 点一下就提到最上层（和收纳盒一致）：组件平时会被别的程序盖住
         PreviewMouseLeftButtonDown += (_, _) => RaiseToFront();
         PreviewMouseRightButtonDown += (_, _) => RaiseToFront();
+        // 让组件里的输入框真的能打字（不抢焦点的窗口默认收不到键盘，见 DesktopInput 的说明）
+        DesktopInput.EnableTyping(this);
         SourceInitialized += (_, _) =>
         {
             // 和收纳盒一样：必须在第一次渲染之前挂载（挂晚了窗口会"看不见"）
