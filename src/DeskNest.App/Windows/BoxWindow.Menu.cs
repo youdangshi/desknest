@@ -191,7 +191,14 @@ public sealed partial class BoxWindow
     /// <summary>一个带子菜单的父项（右侧自带 › 箭头）。</summary>
     private static MenuItem Sub(string header, params object[] children)
     {
-        var mi = new MenuItem { Header = header };
+        // 子菜单的弹出层**不会**继承 ContextMenu 的配色（WPF 的 Popup 是独立可视化树），
+        // 所以每一项都要自己带上底色与前景色，否则会出现"浅色底 + 白色字"看不见的情况。
+        var mi = new MenuItem
+        {
+            Header = header,
+            Background = Theme.Desktop.CardBrush,
+            Foreground = Theme.Desktop.ForegroundBrush
+        };
         foreach (var child in children)
         {
             if (child is MenuItem item) mi.Items.Add(item);
@@ -217,6 +224,23 @@ public sealed partial class BoxWindow
         menu.Resources[SystemColors.HighlightTextBrushKey] = t.ForegroundBrush;
         menu.Resources[SystemColors.MenuBrushKey] = t.CardBrush;
         menu.Resources[SystemColors.MenuTextBrushKey] = t.ForegroundBrush;
+        // 顶层菜单项同样显式上色（Popups 不回继承）
+        menu.Opened += (_, _) => PaintItems(menu.Items, t);
+        PaintItems(menu.Items, t);
+    }
+
+    /// <summary>递归给每个菜单项（含子菜单）刷上底色与前景色；危险项保留红色文字。</summary>
+    private static void PaintItems(System.Collections.IEnumerable items, ThemeTokens t)
+    {
+        var danger = t.DangerColor;
+        foreach (var entry in items)
+        {
+            if (entry is not System.Windows.Controls.MenuItem mi) continue;
+            var isDanger = mi.Foreground is System.Windows.Media.SolidColorBrush brush && brush.Color == danger;
+            mi.Background = t.CardBrush;
+            if (!isDanger) mi.Foreground = t.ForegroundBrush;
+            if (mi.Items.Count > 0) PaintItems(mi.Items, t);
+        }
     }
 
     private static MenuItem MenuAction(string header, Action action)

@@ -18,6 +18,17 @@ public static class PerfPage
         col.Children.Add(UiKit.PageHeader("性能监视", "给自己看的仪表盘：想看什么、怎么排，都由你决定。"));
 
         var readout = UiKit.Text("", 13);
+        // 实时曲线：CPU 与内存各一条，按采样历史滚动（原地更新，不重建可视化树）
+        var cpuChart = UiKit.Sparkline(caption: "CPU");
+        var memChart = UiKit.Sparkline(caption: "内存");
+        var tick = 0;
+        void RedrawCharts()
+        {
+            var history = AppServices.Perf.History().TakeLast(60).ToList();
+            cpuChart.SetValues(history.Select(h => h.CpuPercent).ToList());
+            memChart.SetValues(history.Select(h => h.MemoryPercent).ToList());
+        }
+        RedrawCharts();
         void Update()
         {
             var s = AppServices.Perf.Latest;
@@ -26,6 +37,11 @@ public static class PerfPage
                 : $"CPU {s.CpuPercent:0.#}%　内存 {s.MemoryPercent:0.#}%（{UiKit.Fmt(s.MemoryUsedBytes)} / {UiKit.Fmt(s.MemoryTotalBytes)}）\n" +
                   $"网络 ↑{Rate(s.NetUpBytesPerSec)} ↓{Rate(s.NetDownBytesPerSec)}" +
                   (s.GpuPercent is { } gpu ? $"　GPU {gpu}%" + (s.GpuTempC is { } gt ? $"　{gt:0}°C" : "") : "　GPU 需 NVIDIA 驱动");
+            // 曲线每 5 次采样重画一次（约 5 秒），避免每秒都重建可视化树
+            if (++tick % 5 == 0)
+            {
+                RedrawCharts();
+            }
         }
         Update();
         AppServices.Perf.Sampled += _ => Update();
@@ -47,6 +63,11 @@ public static class PerfPage
                     }
                 }),
             UiKit.Row("📊", "当前状态", null, readout)));
+
+        col.Children.Add(UiKit.Section("实时曲线（最近 60 次采样）",
+            UiKit.Row("📈", "CPU / 内存走势", "只画最近一分钟左右，避免占内存", null),
+            cpuChart,
+            memChart));
 
         col.Children.Add(UiKit.Section("桌面上显示什么",
             UiKit.ToggleRow("🖥", "CPU", null, AppServices.Settings.Get("perf.show.cpu", true), v => AppServices.Settings.Set("perf.show.cpu", v)),
@@ -123,9 +144,11 @@ public static class UsagePage
             else
             {
                 rows.Add(UiKit.Row("Σ", $"合计 {UiKit.FmtSecs(usage.Sum(u => u.Seconds))}", $"{usage.Count} 个应用", null));
-                foreach (var app in usage.Take(12))
-                    rows.Add(UiKit.Row("▫", app.ProcessName,
-                        $"{UiKit.FmtSecs(app.Seconds)} · {app.Share:0.#}% · {app.Sessions} 次", null));
+                // 排行用横向条形图：一眼看出谁占的时间最多（原来是一行行纯文字，看不出差距）
+                var bars = usage.Take(10)
+                    .Select(a => (a.ProcessName, (double)a.Seconds, $"{UiKit.FmtSecs(a.Seconds)} · {a.Share:0.#}% · {a.Sessions} 次"))
+                    .ToList();
+                rows.Add(UiKit.Card(null, UiKit.Bars(bars)));
             }
             col.Children.Add(UiKit.Section(label, rows.ToArray()));
         }

@@ -74,7 +74,9 @@ public sealed class ThemeTokens
     };
     public Brush CardBrush => new SolidColorBrush(CardColor);
     public Brush BorderBrush => new SolidColorBrush(Foreground) { Opacity = IsDark ? 0.12 : 0.08 };
-    public Brush DangerBrush => new SolidColorBrush(Color.FromRgb(0xE2, 0x53, 0x53));
+    /// <summary>危险操作的颜色（删除等）。单独暴露 Color，便于菜单项比较/复用。</summary>
+    public Color DangerColor => Color.FromRgb(0xE2, 0x53, 0x53);
+    public Brush DangerBrush => new SolidColorBrush(DangerColor);
     public Brush SuccessBrush => new SolidColorBrush(Color.FromRgb(0x3F, 0xB9, 0x50));
 
     public ThemeTokens Clone() => (ThemeTokens)MemberwiseClone();
@@ -104,7 +106,30 @@ public static class Theme
     public static void ApplyDesktop(ThemeTokens tokens)
     {
         Desktop = tokens;
+        ApplyMenuColors(tokens);
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// 把菜单（右键菜单/子菜单）的配色改成我们自己的。
+    /// 必须写在**应用级资源**里：WPF 菜单模板用的是 `{StaticResource SystemColors.MenuBrushKey}`
+    /// 这类静态引用，在控件实例上覆盖没用——这正是"暗色主题下菜单变成浅底白字、看不清"的原因。
+    /// </summary>
+    private static void ApplyMenuColors(ThemeTokens t)
+    {
+        try
+        {
+            var app = System.Windows.Application.Current;
+            if (app is null) return;
+            var highlight = Color.FromArgb(48, t.Accent.R, t.Accent.G, t.Accent.B);
+            app.Resources[SystemColors.MenuBrushKey] = new SolidColorBrush(t.CardColor);
+            app.Resources[SystemColors.MenuBarBrushKey] = new SolidColorBrush(t.CardColor);
+            app.Resources[SystemColors.MenuTextBrushKey] = new SolidColorBrush(t.Foreground);
+            app.Resources[SystemColors.HighlightBrushKey] = new SolidColorBrush(highlight);
+            app.Resources[SystemColors.HighlightTextBrushKey] = new SolidColorBrush(t.Foreground);
+            app.Resources[SystemColors.MenuHighlightBrushKey] = new SolidColorBrush(highlight);
+        }
+        catch { }
     }
 
     /// <summary>把当前令牌应用到窗口外壳（背景/前景）。运行时换主题必须调用，否则只剩页面内容变色。</summary>

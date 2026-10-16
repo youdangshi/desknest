@@ -55,10 +55,35 @@ public static class ControlStyles
         style.Setters.Add(new Setter(Control.BorderThicknessProperty, accent ? new Thickness(0) : new Thickness(1)));
         style.Setters.Add(new Setter(FrameworkElement.CursorProperty, System.Windows.Input.Cursors.Hand));
         style.Setters.Add(new Setter(FrameworkElement.TagProperty, new CornerRadius(Tokens.CornerControl)));
-        style.Setters.Add(new Setter(Control.BackgroundProperty, accent ? Theme.Current.AccentBrush : Theme.Current.CardBrush));
+        // 主按钮：一点竖向渐变 + 极淡投影，让它从一堆描边按钮里"立"起来；
+        // 次要按钮保持纯色描边，避免整页都在发光。
+        style.Setters.Add(new Setter(Control.BackgroundProperty, accent ? AccentFill() : Theme.Current.CardBrush));
         style.Setters.Add(new Setter(Control.ForegroundProperty, accent ? Brushes.White : Theme.Current.ForegroundBrush));
         style.Setters.Add(new Setter(Control.BorderBrushProperty, Theme.Current.BorderBrush));
+        if (accent)
+        {
+            var shadow = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                BlurRadius = 10,
+                ShadowDepth = 1.5,
+                Direction = 270,
+                Opacity = 0.28,
+                Color = Darken(Theme.Current.Accent)
+            };
+            style.Setters.Add(new Setter(UIElement.EffectProperty, shadow));
+        }
         return style;
+    }
+
+    /// <summary>主按钮底色：强调色的浅渐变（上浅下深），比纯色更有质感。</summary>
+    private static Brush AccentFill()
+    {
+        var accent = Theme.Current.Accent;
+        var light = Color.FromRgb(
+            (byte)Math.Min(255, accent.R + 18),
+            (byte)Math.Min(255, accent.G + 18),
+            (byte)Math.Min(255, accent.B + 18));
+        return new LinearGradientBrush(light, accent, new Point(0.5, 0), new Point(0.5, 1));
     }
 
     private static Color Darken(Color c) => Color.FromRgb(

@@ -343,6 +343,8 @@ public sealed class MainWindow : FluentWindow
         }
         _current = page;
         LastPageError = null;
+        // 切页写日志：验收时"访问了哪些页面、有没有失败"可以直接对日志核对
+        Log.Info($"切到页面：{page}（{entry.Title}）");
         try
         {
             // 内容限制最大宽度并左对齐：宽屏下不会拉成一整行，阅读更舒服
