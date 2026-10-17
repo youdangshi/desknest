@@ -30,12 +30,15 @@
   <!-- 把可选模块编译出的 dll 拷到输出目录的 modules\ 下：没放进去的模块就等于"未安装" -->
   <!-- 让模块先被构建（只构建、不引用其程序集），否则发布时模块 dll 可能还不存在 -->
   <ItemGroup>
+    <!-- v2.0：6 个可选模块暂时不进默认构建（代码保留，补回来取消注释即可，见 docs/19） -->
+    <!--
     <ProjectReference Include="..\DeskNest.Module.Pet\DeskNest.Module.Pet.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\DeskNest.Module.UsageStats\DeskNest.Module.UsageStats.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\DeskNest.Module.PerfMonitor\DeskNest.Module.PerfMonitor.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\DeskNest.Module.ApiPanel\DeskNest.Module.ApiPanel.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\DeskNest.Module.PowerSchedule\DeskNest.Module.PowerSchedule.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\DeskNest.Module.AiBridge\DeskNest.Module.AiBridge.csproj" ReferenceOutputAssembly="false" />
+    -->
     <!-- 说明：DeskNest.Module.ComfyUI 目前**不随默认构建安装**（用户澄清：本地 ComfyUI 主要用于离线生成素材，
          不是要把它做成软件功能）。需要时把下面这行取消注释即可让它出现在「模块」与左侧导航里。 -->
     <!-- <ProjectReference Include="..\DeskNest.Module.ComfyUI\DeskNest.Module.ComfyUI.csproj" ReferenceOutputAssembly="false" /> -->

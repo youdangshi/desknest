@@ -16,13 +16,13 @@ public sealed class Repository
         b.UpdatedAt = DateTimeOffset.Now;
         _db.Exec("""
         INSERT INTO boxes VALUES($id,$name,$kind,$sm,$sr,$gid,$mp,$vm,$sort,$sd,$is,$ts,$fnl,$op,$mat,$mi,$cr,$ss,
-          $lp,$ls,$ru,$ih,$ah,$hfn,$se,$shb,$mk,$anchor,$mx,$my,$w,$h,$cx,$cy,$ca,$ua,$tstyle)
+          $lp,$ls,$ru,$ih,$ah,$hfn,$se,$shb,$mk,$anchor,$mx,$my,$w,$h,$cx,$cy,$ca,$ua,$tstyle,$cc)
         ON CONFLICT(id) DO UPDATE SET name=$name,kind=$kind,storage_mode=$sm,storage_root=$sr,group_id=$gid,
           mapped_path=$mp,view_mode=$vm,sort_mode=$sort,sort_descending=$sd,icon_size=$is,text_size=$ts,
           file_name_lines=$fnl,opacity=$op,material=$mat,material_intensity=$mi,corner_radius=$cr,style_scope=$ss,
           lock_position=$lp,lock_size=$ls,rolled_up=$ru,is_hidden=$ih,auto_hide=$ah,hide_file_name=$hfn,
           show_extensions=$se,show_hover_buttons=$shb,monitor_key=$mk,anchor=$anchor,margin_x=$mx,margin_y=$my,
-          width=$w,height=$h,collapsed_x=$cx,collapsed_y=$cy,updated_at=$ua,title_style=$tstyle;
+          width=$w,height=$h,collapsed_x=$cx,collapsed_y=$cy,updated_at=$ua,title_style=$tstyle,card_color=$cc;
         """,
         ("$id", b.Id), ("$name", b.Name), ("$kind", (int)b.Kind), ("$sm", (int)b.StorageMode),
         ("$sr", b.StorageRoot), ("$gid", b.GroupId), ("$mp", b.MappedPath), ("$vm", b.ViewMode),
@@ -35,7 +35,7 @@ public sealed class Repository
         ("$mx", b.MarginX), ("$my", b.MarginY), ("$w", b.Width), ("$h", b.Height),
         ("$cx", b.CollapsedX), ("$cy", b.CollapsedY),
         ("$ca", b.CreatedAt.ToString("o")), ("$ua", b.UpdatedAt.ToString("o")),
-        ("$tstyle", b.TitleStyle));
+        ("$tstyle", b.TitleStyle), ("$cc", b.CardColor ?? ""));
     }
 
     public List<BoxRecord> Boxes() => _db.Query("SELECT * FROM boxes ORDER BY created_at", MapBox);
@@ -61,7 +61,8 @@ public sealed class Repository
         Anchor = r.GetString(27), MarginX = r.GetDouble(28), MarginY = r.GetDouble(29),
         Width = r.GetDouble(30), Height = r.GetDouble(31), CollapsedX = r.GetDouble(32), CollapsedY = r.GetDouble(33),
         CreatedAt = DateTimeOffset.Parse(r.GetString(34)), UpdatedAt = DateTimeOffset.Parse(r.GetString(35)),
-        TitleStyle = r.GetStringOrNull(36) ?? "Standard"
+        TitleStyle = r.GetStringOrNull(36) ?? "Standard",
+        CardColor = r.GetStringOrNull(37) ?? ""   // 老库补列后是第 38 列（索引 37）
     };
 
     // ---------- Items ----------

@@ -18,7 +18,10 @@ public static class Program
         if (shotFlag >= 0 && shotFlag + 1 < args.Length)
             PageShotter.OutputDir = args[shotFlag + 1];
 
-        _mutex = new Mutex(true, MutexName, out var isFirst);
+        // 截图模式用独立的互斥名：否则用户正开着桌巢时自动化截图永远跑不起来（会被单实例挡掉）。
+        // 截图模式自带隔离数据目录（DESKNEST_DATA_DIR），不会碰用户数据。
+        var mutexName = PageShotter.OutputDir is null ? MutexName : MutexName + ".shot";
+        _mutex = new Mutex(true, mutexName, out var isFirst);
         if (!isFirst)
         {
             // 截图模式必须是唯一实例：否则会连到已运行的实例上，抓不到图还给用户添乱

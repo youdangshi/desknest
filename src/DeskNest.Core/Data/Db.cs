@@ -90,6 +90,7 @@ public sealed class Db : IDisposable
 
         // 老版本的库缺列就补上（SQLite 的 ADD COLUMN 会追加到末尾，正好与 SELECT * 的顺序一致）
         EnsureColumn("boxes", "title_style", "TEXT");
+        EnsureColumn("boxes", "card_color", "TEXT DEFAULT ''");   // v2.0：每盒卡片颜色
         // 带 DEFAULT：不然老记录这三列是 NULL，读取时容易踩空（ordinal 13 那次就是这么炸的）
         EnsureColumn("todos", "color", "TEXT DEFAULT ''");
         EnsureColumn("todos", "is_starred", "INTEGER DEFAULT 0");

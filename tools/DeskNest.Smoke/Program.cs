@@ -242,6 +242,21 @@ Check("单盒选「跟随全局」时像素与全局完全一致",
     () => DeskNest.App.Ui.Theme.ResolveDesktop("Mica", 0.9, 0.7, 16, true).ResolveCardPaint()
         == themeBase.ResolveCardPaint());
 
+Console.WriteLine("== v2.0：每盒卡片颜色（新增列 card_color） ==");
+var colored = new BoxRecord { Name = "带颜色的盒子", CardColor = "#C02020" };
+repo.Upsert(colored);
+Check("卡片颜色能存能读（默认空 = 跟随全局）", () =>
+{
+    var back = repo.Box(colored.Id)!;
+    return back.CardColor == "#C02020";
+});
+var plainBox = new BoxRecord { Name = "默认颜色盒子" };
+repo.Upsert(plainBox);
+Check("不设颜色时默认为空字符串（不会读到 NULL 崩掉）", () => repo.Box(plainBox.Id)!.CardColor == "");
+colored.Name = "改过名字的盒子";
+repo.Upsert(colored);
+Check("改别的字段不会把卡片颜色弄丢", () => repo.Box(colored.Id)!.CardColor == "#C02020");
+
 try { Directory.Delete(root, true); } catch { }
 
 Console.WriteLine();

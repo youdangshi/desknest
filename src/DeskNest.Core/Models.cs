@@ -41,6 +41,8 @@ public sealed class BoxRecord
     /// Hidden（隐藏，靠 Alt+拖动或快捷键操作）。
     /// </summary>
     public string TitleStyle { get; set; } = "Standard";
+    /// <summary>每盒的卡片颜色（#RRGGBB；空 = 跟随全局）。v2.0 新增，老库由 EnsureColumn 自动补。</summary>
+    public string CardColor { get; set; } = "";
     public string MonitorKey { get; set; } = "";
     public string Anchor { get; set; } = "Free";
     public double MarginX { get; set; } = 200;

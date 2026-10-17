@@ -277,28 +277,27 @@ public sealed class MainWindow : FluentWindow
             _pages[key] = (title, icon, build);
         }
 
+        // ===== v2.0：只做收纳，导航收成 5 页 =====
+        // 其余页面（整理 / 组件 / 多显示器 / 模块 / 桌宠 / 性能 / 统计 / API / 关机 / AI）
+        // 只是**不注册**，页面类与代码都还在仓库里；补回来时把这些 AddPage 取消注释即可
+        // （见 docs/19-后续开发计划-Backlog.md）。
         AddPage("overview", "概览", Icons.Home, OverviewPage.Build);
         AddPage("boxes", "收纳盒", Icons.Folder, BoxesPage.Build);
-        AddPage("organize", "整理与规则", Icons.Organize, OrganizePage.Build);
-        AddPage("widgets", "桌面组件", Icons.Widgets, WidgetsPage.Build);
         AddPage("appearance", "外观与主题", Icons.Appearance, AppearancePage.Build);
-        AddPage("displays", "多显示器", Icons.Monitor, DisplaysPage.Build);
-        AddPage("modules", "模块", Icons.Modules, ModulesPage.Build);
         AddPage("data", "数据与备份", Icons.Data, DataPage.Build);
         AddPage("about", "关于", Icons.About, AboutPage.Build);
 
-        if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.Pet))
-            AddPage("pet", "桌宠", Icons.Pet, PetPage.Build);
-        if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.PerfMonitor))
-            AddPage("perf", "性能监视", Icons.Performance, PerfPage.Build);
-        if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.UsageStats))
-            AddPage("usage", "使用统计", Icons.Usage, UsagePage.Build);
-        if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.ApiPanel))
-            AddPage("api", "API 面板", Icons.Api, ApiPage.Build);
-        if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.PowerSchedule))
-            AddPage("power", "计划关机", Icons.Power, PowerPage.Build);
-        if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.AiBridge))
-            AddPage("ai", "AI 接口", Icons.Ai, AiPage.Build);
+        // —— 以下为 v2.0 下架项（保留，勿删）——
+        // AddPage("organize", "整理与规则", Icons.Organize, OrganizePage.Build);
+        // AddPage("widgets", "桌面组件", Icons.Widgets, WidgetsPage.Build);
+        // AddPage("displays", "多显示器", Icons.Monitor, DisplaysPage.Build);
+        // AddPage("modules", "模块", Icons.Modules, ModulesPage.Build);
+        // if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.Pet))       AddPage("pet", "桌宠", Icons.Pet, PetPage.Build);
+        // if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.PerfMonitor)) AddPage("perf", "性能监视", Icons.Performance, PerfPage.Build);
+        // if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.UsageStats)) AddPage("usage", "使用统计", Icons.Usage, UsagePage.Build);
+        // if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.ApiPanel))   AddPage("api", "API 面板", Icons.Api, ApiPage.Build);
+        // if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.PowerSchedule)) AddPage("power", "计划关机", Icons.Power, PowerPage.Build);
+        // if (AppServices.Modules.Loaded.ContainsKey(ModuleIds.AiBridge))   AddPage("ai", "AI 接口", Icons.Ai, AiPage.Build);
     }
 
     private void BuildNav()
