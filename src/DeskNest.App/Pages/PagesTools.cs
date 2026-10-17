@@ -471,7 +471,7 @@ public static class AboutPage
     {
         var col = UiKit.Col();
         col.Children.Add(UiKit.PageHeader(AppInfo.ProductName,
-            $"版本 {AppInfo.Version} · MIT 开源 · 数据全部留在本机"));
+            $"版本 {AppInfo.Version} · GPL-3.0 开源 · 数据全部留在本机"));
 
         // 更新结果就地显示在这一块里，按钮点完不用再找地方看结果
         var resultBox = new StackPanel { Margin = new Thickness(0, Tokens.Space4, 0, 0) };
@@ -516,7 +516,7 @@ public static class AboutPage
         };
 
         col.Children.Add(UiKit.Section("版本与更新",
-            UiKit.Row(Icons.Download, "当前版本", $"{AppInfo.Version}（开源免费，MIT 许可）", null),
+            UiKit.Row(Icons.Download, "当前版本", $"{AppInfo.Version}（GPL-3.0 开源，可自由使用与再分发）", null),
             UiKit.Row(Icons.Refresh, "检查更新", $"查询 GitHub 上的最新发布版：{Updater.Owner}/{Updater.Repo}",
                 UiKit.Row(checkBtn, UiKit.Btn("更新日志", () => OpenUrl(Updater.ChangelogUrl)))),
             UiKit.ToggleRow(Icons.Clock, "启动时自动检查更新",

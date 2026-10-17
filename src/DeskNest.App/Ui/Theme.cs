@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Media;
 
 namespace DeskNest.App.Ui;
@@ -6,6 +6,30 @@ namespace DeskNest.App.Ui;
 /// <summary>同一套设计令牌 + "两级样式"（全局默认 → 单个盒/组件可覆盖）。</summary>
 public enum MaterialKind { Acrylic, Mica, Solid }
 public enum ColorScheme { Dark, Light, PureBlack, EyeCare, FollowSystem }
+
+/// <summary>
+/// Windows 的"应用深浅色"（设置 → 个性化 → 颜色 → 选择默认应用模式）。
+/// **必须只有这一个来源**：以前「跟随系统」时，我们按钟点猜（19 点后算深色），
+/// 而 WPF-UI 按系统真实设置走 —— 16:35 系统是深色、我们算浅色，于是导航变成
+/// "白底白字"、内容区灰底黑字（用户 2026-10-17 反馈「更难看了、文字看不清」）。
+/// </summary>
+public static class SystemTheme
+{
+    public static bool IsDark
+    {
+        get
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+                if (key?.GetValue("AppsUseLightTheme") is int v) return v == 0;
+            }
+            catch { }
+            return DateTime.Now.Hour is >= 19 or < 7;   // 读不到注册表才退回按时间猜
+        }
+    }
+}
 
 /// <summary>卡片最终画法（A/R/G/B）。抽出来是为了让冒烟验证器直接比较"画出来的像素"，不必实例化 WPF 控件。</summary>
 public readonly record struct CardPaint(byte A, byte R, byte G, byte B);
@@ -34,7 +58,7 @@ public sealed class ThemeTokens
     {
         ColorScheme.Dark or ColorScheme.PureBlack => true,
         ColorScheme.Light or ColorScheme.EyeCare => false,
-        _ => DateTime.Now.Hour is >= 19 or < 7    // 仅"跟随系统"时按时间近似
+        _ => SystemTheme.IsDark      // 跟随系统 = 真的看系统，不按钟点猜
     };
 
     public Color Background => Scheme switch
@@ -56,14 +80,56 @@ public sealed class ThemeTokens
         {
             ColorScheme.EyeCare => Color.FromRgb(0x2B, 0x24, 0x18),
             ColorScheme.Light => Color.FromRgb(0x1A, 0x1A, 0x1A),
-            _ => Color.FromRgb(0xF5, 0xF5, 0xF5)
+            // ← 这里以前直接写死 #F5F5F5：于是「跟随系统 + 系统是浅色」时，
+            // 背景是 #F6F6F8、文字也是 #F5F5F5 → 对比度 1.06，白底白字（2026-10-17 实测）。
+            _ => IsDark ? Color.FromRgb(0xF5, 0xF5, 0xF5) : Color.FromRgb(0x1A, 0x1A, 0x1A)
         };
 
-    public Brush BackgroundBrush => new SolidColorBrush(Background);
-    public Brush ForegroundBrush => new SolidColorBrush(Foreground);
-    /// <summary>次要/更弱的前景色（与背景混合，深浅色都自然）。</summary>
-    public Color SecondaryColor => Mix(Foreground, Background, 0.38);
-    public Color TertiaryColor => Mix(Foreground, Background, 0.58);
+    // ---- 画刷缓存 ----
+    // 以前每个 getter 都 new 一个新画刷：谁在"创建控件"时取了色，之后换主题就永远停在那天的颜色。
+    // 2026-10-17 实测到极致：外观页下拉框文字 rgb(231) 压在白底上，对比度 1.06（等于看不见）。
+    // 现在每个令牌对象只保留一份画刷实例，换主题时**原地改颜色**，已绑定的控件自动跟着变。
+    private SolidColorBrush? _bgBrush, _fgBrush, _secondaryBrush, _tertiaryBrush, _cardBrush, _borderBrush, _accentBrush, _dangerBrush;
+
+    /// <summary>把缓存画刷刷成当前令牌的颜色（换主题后必须调用一次）。</summary>
+    public void RefreshBrushes()
+    {
+        static SolidColorBrush Get(ref SolidColorBrush? slot, Color color)
+        {
+            slot ??= new SolidColorBrush();
+            slot.Color = color;
+            return slot;
+        }
+        Get(ref _bgBrush, Background);
+        Get(ref _fgBrush, Foreground);
+        Get(ref _secondaryBrush, SecondaryColor);
+        Get(ref _tertiaryBrush, TertiaryColor);
+        Get(ref _cardBrush, CardColor);
+        Get(ref _accentBrush, Accent);
+        Get(ref _dangerBrush, DangerColor);
+        var border = Get(ref _borderBrush, Foreground);
+        border.Opacity = IsDark ? 0.22 : 0.16;   // 以前 0.12/0.08，卡片边界几乎看不见
+    }
+
+    /// <summary>把另一份令牌的字段拷进来（保持画刷实例不变，见 RefreshBrushes 的说明）。</summary>
+    public void CopyFrom(ThemeTokens o)
+    {
+        Scheme = o.Scheme;
+        Material = o.Material;
+        MaterialIntensity = o.MaterialIntensity;
+        Accent = o.Accent;
+        CornerRadius = o.CornerRadius;
+        Opacity = o.Opacity;
+        ReduceMotion = o.ReduceMotion;
+        CardColorOverride = o.CardColorOverride;
+        RefreshBrushes();
+    }
+
+    public Brush BackgroundBrush => _bgBrush ?? new SolidColorBrush(Background);
+    public Brush ForegroundBrush => _fgBrush ?? new SolidColorBrush(Foreground);
+    /// <summary>次要/更弱的前景色（与背景混合，深浅色都自然）。0.38 → 0.30：白底实测对比度 3.4 偏低。</summary>
+    public Color SecondaryColor => Mix(Foreground, Background, 0.18);
+    public Color TertiaryColor => Mix(Foreground, Background, 0.34);
 
     private static Color Mix(Color fg, Color bg, double towardBg)
     {
@@ -71,13 +137,13 @@ public sealed class ThemeTokens
         return Color.FromRgb((byte)Lerp(fg.R, bg.R), (byte)Lerp(fg.G, bg.G), (byte)Lerp(fg.B, bg.B));
     }
 
-    public Brush AccentBrush => new SolidColorBrush(Accent);
+    public Brush AccentBrush => _accentBrush ?? new SolidColorBrush(Accent);
     /// <summary>
     /// 次要/辅助文字用"与背景混合后的实色"，而不是"前景色加透明度"：
     /// 透明度会与身后不同表面（背景 / 卡片 / 悬停淡底）混出不同结果，容易糊成一片。
     /// </summary>
-    public Brush SecondaryBrush => new SolidColorBrush(SecondaryColor);
-    public Brush TertiaryBrush => new SolidColorBrush(TertiaryColor);
+    public Brush SecondaryBrush => _secondaryBrush ?? new SolidColorBrush(SecondaryColor);
+    public Brush TertiaryBrush => _tertiaryBrush ?? new SolidColorBrush(TertiaryColor);
     /// <summary>卡片底色（浅色/护眼用白、深色用近黑），单独暴露成 Color 便于对比度测试。</summary>
     public Color CardColor => Scheme switch
     {
@@ -87,11 +153,11 @@ public sealed class ThemeTokens
         ColorScheme.Dark => Color.FromRgb(0x28, 0x28, 0x2E),
         _ => IsDark ? Color.FromRgb(0x28, 0x28, 0x2E) : Color.FromRgb(0xFF, 0xFF, 0xFF)
     };
-    public Brush CardBrush => new SolidColorBrush(CardColor);
-    public Brush BorderBrush => new SolidColorBrush(Foreground) { Opacity = IsDark ? 0.12 : 0.08 };
+    public Brush CardBrush => _cardBrush ?? new SolidColorBrush(CardColor);
+    public Brush BorderBrush => _borderBrush ?? new SolidColorBrush(Foreground) { Opacity = IsDark ? 0.22 : 0.16 };
     /// <summary>危险操作的颜色（删除等）。单独暴露 Color，便于菜单项比较/复用。</summary>
     public Color DangerColor => Color.FromRgb(0xE2, 0x53, 0x53);
-    public Brush DangerBrush => new SolidColorBrush(DangerColor);
+    public Brush DangerBrush => _dangerBrush ?? new SolidColorBrush(DangerColor);
     public Brush SuccessBrush => new SolidColorBrush(Color.FromRgb(0x3F, 0xB9, 0x50));
 
     /// <summary>卡片（桌面盒 / 组件）真正画出来的底色：自定义颜色优先，否则跟随配色方案。</summary>
@@ -145,14 +211,16 @@ public static class Theme
 
     public static void ApplyShell(ThemeTokens tokens)
     {
-        Shell = tokens;
+        // 原地覆盖，不换实例：所有控件手里拿的是这个对象的画刷（见 RefreshBrushes），
+        // 换实例会让它们永远停在旧颜色 —— 这正是"改主题文字颜色不变"的根因。
+        Shell.CopyFrom(tokens);
         Changed?.Invoke();
     }
 
     public static void ApplyDesktop(ThemeTokens tokens)
     {
-        Desktop = tokens;
-        ApplyMenuColors(tokens);
+        Desktop.CopyFrom(tokens);
+        ApplyMenuColors(Desktop);
         Changed?.Invoke();
     }
 

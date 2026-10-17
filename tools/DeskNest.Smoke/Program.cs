@@ -1,4 +1,4 @@
-using DeskNest.Core;
+﻿using DeskNest.Core;
 using DeskNest.Core.Data;
 using DeskNest.Core.Services;
 
@@ -178,6 +178,18 @@ Check("深色卡片 30% 压在亮壁纸上会被判定为需要描边",
     () => DeskNest.App.Ui.Contrast.NeedsTextBackdrop(lightText, darkCard, 0.3, whiteWall));
 Check("深色卡片 95% 压在亮壁纸上不再需要描边",
     () => !DeskNest.App.Ui.Contrast.NeedsTextBackdrop(lightText, darkCard, 0.95, whiteWall));
+
+// 3) 每一套配色都要"深底浅字 / 浅底深字"（2026-10-17 白底白字的回归门禁）
+foreach (var scheme in new[] { DeskNest.App.Ui.ColorScheme.Light, DeskNest.App.Ui.ColorScheme.Dark,
+                               DeskNest.App.Ui.ColorScheme.PureBlack, DeskNest.App.Ui.ColorScheme.EyeCare,
+                               DeskNest.App.Ui.ColorScheme.FollowSystem })
+{
+    var tokens = new DeskNest.App.Ui.ThemeTokens { Scheme = scheme };
+    var r1 = DeskNest.App.Ui.Contrast.Ratio(tokens.Foreground, tokens.Background);
+    var r2 = DeskNest.App.Ui.Contrast.Ratio(tokens.SecondaryColor, tokens.CardColor);
+    Check($"{scheme}：正文与背景对比度 ≥ 7:1（实际 {r1:0.0}:1）", () => r1 >= 7);
+    Check($"{scheme}：次要文字与卡片对比度 ≥ 3.5:1（实际 {r2:0.0}:1）", () => r2 >= 3.5);
+}
 Check("深色卡片 30% 压在暗壁纸上不需要描边",
     () => !DeskNest.App.Ui.Contrast.NeedsTextBackdrop(lightText, darkCard, 0.3, blackWall));
 

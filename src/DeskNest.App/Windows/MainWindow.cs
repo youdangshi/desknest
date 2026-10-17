@@ -410,7 +410,9 @@ public sealed class MainWindow : FluentWindow
             var opaque = AppServices.Settings.Get("theme.forceOpaqueShell", Environment.OSVersion.Version.Build < 22000);
             WindowBackdropType = opaque ? WindowBackdropType.None : FluentTheme.BackdropFor(Theme.Shell.Material);
             Background = opaque ? Theme.Shell.BackgroundBrush : System.Windows.Media.Brushes.Transparent;
-            Log.Info($"主窗口背景：{(opaque ? "不透明（材质未启用）" : "跟随材质 " + Theme.Shell.Material)}");
+            var bg = Background as System.Windows.Media.SolidColorBrush;
+            Log.Info($"主窗口背景：{(opaque ? "不透明（材质未启用）" : "跟随材质 " + Theme.Shell.Material)}" +
+                     (bg is null ? "（透明/材质）" : $" #{bg.Color.R:X2}{bg.Color.G:X2}{bg.Color.B:X2}"));
         }
         catch (Exception ex) { Log.Warn("设置主窗口背景失败：" + ex.Message); }
     }
@@ -422,6 +424,9 @@ public sealed class MainWindow : FluentWindow
     {
         try
         {
+            // 只有"配色/材质"变化才重建页面。
+            // 主题色也重建过一次，但那是每次拖动取色器都重建整页 —— 反而更闪、更卡，
+            // 已回退；按钮跟随主题色的问题改用"只重刷按钮样式"解决（见 B10）。
             var appearanceChanged = _appliedScheme != Theme.Shell.Scheme || _appliedMaterial != Theme.Shell.Material;
             _appliedScheme = Theme.Shell.Scheme;
             _appliedMaterial = Theme.Shell.Material;

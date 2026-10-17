@@ -25,6 +25,10 @@ public sealed partial class BoxWindow : Window
     private readonly StackPanel _tabStrip;
     private readonly TextBlock _titleText;
 
+    /// <summary>标题栏那 4 个图标按钮 + 左侧 ▦ 图标：换主题时要重新上色（它们的前景色是创建时取的画刷）。</summary>
+    private readonly List<Button> _headerButtons = new();
+    private TextBlock? _titleIcon;
+
     /// <summary>卷起前记住的展开高度（卷起时窗口会缩到只剩标题栏）。</summary>
     private double? _expandedHeight;
     private System.Windows.Controls.ContextMenu? _menu;
@@ -68,14 +72,15 @@ public sealed partial class BoxWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 4, 0)
         };
-        titleLeft.Children.Add(new TextBlock
+        _titleIcon = new TextBlock
         {
             Text = "▦",
             FontSize = 12,
             Margin = new Thickness(0, 0, 6, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = Theme.Desktop.SecondaryBrush
-        });
+        };
+        titleLeft.Children.Add(_titleIcon);
         titleLeft.Children.Add(_titleText);
         titleLeft.Children.Add(_tabStrip);
 
@@ -184,8 +189,15 @@ public sealed partial class BoxWindow : Window
         ReloadItems();
         RefreshGroupTabsPublic();
 
-        Theme.Changed += ApplyLook;
-        Closed += (_, _) => Theme.Changed -= ApplyLook;
+        Theme.Changed += OnThemeChanged;
+        Closed += (_, _) => Theme.Changed -= OnThemeChanged;
+    }
+
+    /// <summary>主题变了：重画卡片 + 重建文件列表（文件名/图标的画刷也是创建时取的）。</summary>
+    private void OnThemeChanged()
+    {
+        ApplyLook();
+        ReloadItems();
     }
 
     private void OnSourceInitialized()
@@ -270,6 +282,7 @@ public sealed partial class BoxWindow : Window
         };
         b.Style = ControlStyles.IconButton();   // 不套样式会露出 WPF 默认按钮的悬停底色
         b.Click += (_, e) => { action(); e.Handled = true; };
+        _headerButtons.Add(b);
         return b;
     }
 
@@ -323,6 +336,17 @@ public sealed partial class BoxWindow : Window
             ? new SolidColorBrush(Color.FromArgb(232, paint.R, paint.G, paint.B))
             : new SolidColorBrush(Theme.Desktop.Foreground) { Opacity = 0.08 };
         _status.Foreground = Theme.Desktop.ForegroundBrush;
+        // 标题、▦ 图标、4 个按钮的前景色都是"创建时取的画刷"，换配色不会自动变 ——
+        // 不重刷就会出现"纯黑主题 + 黑字"（用户 2026-10-17 反馈）。这里每次 ApplyLook 都重刷一遍。
+        var fg = Theme.Desktop.ForegroundBrush;
+        _titleText.Foreground = fg;
+        if (_titleIcon is not null) _titleIcon.Foreground = Theme.Desktop.SecondaryBrush;
+        var chip = new SolidColorBrush(Theme.Desktop.Foreground) { Opacity = 0.14 };
+        foreach (var b in _headerButtons)
+        {
+            b.Foreground = fg;
+            b.Background = chip;
+        }
         ApplyTitleStyle();
     }
 

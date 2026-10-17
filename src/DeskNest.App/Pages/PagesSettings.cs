@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using DeskNest.App.Host;
 using DeskNest.App.Ui;
 using DeskNest.App.Windows;
@@ -19,19 +19,16 @@ public static class AppearancePage
     {
         var col = UiKit.Col();
         col.Children.Add(UiKit.PageHeader("外观与主题",
-            "设计窗口（主窗口与设置页）与收纳窗口（桌面盒、组件、桌宠）是两套独立外观，可以分开调节。"));
+            "主窗口、设置页、桌面盒、组件、桌宠共用一套外观：改一次，全线生效。"));
 
-        col.Children.Add(Section("设计窗口（主窗口与设置页）", "theme.shell", () => Theme.Shell, host));
-        col.Children.Add(Section("收纳窗口（桌面盒 / 组件 / 桌宠）", "theme.desktop", () => Theme.Desktop, host));
+        // 一套外观：主窗口、设置页、桌面盒、组件、桌宠全部跟着走。
+        // 以前分「设计窗口 / 收纳窗口」两组，用户反馈"设置里分风格、界面却不一致"——
+        // 两组各存一份令牌，必然会出现一边改了一边没改。现在只有一组。
+        col.Children.Add(Section("外观（主窗口与桌面盒共用一套）", "theme.shell", () => Theme.Shell, host));
 
-        col.Children.Add(UiKit.Section("互相复制",
-            UiKit.ActionRow("→", "把设计窗口的外观复制到收纳窗口", "让桌面盒也变成主窗口那套配色与材质", "复制",
-                () => CopyTokens("theme.shell", "theme.desktop", host)),
-            UiKit.ActionRow("←", "把收纳窗口的外观复制到设计窗口", "反向复制", "复制",
-                () => CopyTokens("theme.desktop", "theme.shell", host))));
 
         col.Children.Add(UiKit.Section("统一或独立（针对桌面盒与组件）",
-            UiKit.ActionRow("🎯", "所有盒与组件统一成收纳窗口的设置", "等于一键回到「大家都一样」，但只影响桌面层", "统一",
+            UiKit.ActionRow("🎯", "所有盒与组件统一成上面这套外观", "把单独改过的盒子拉回来，重新跟随全局", "统一",
                 () =>
                 {
                     foreach (var box in AppServices.Repo.Boxes())
@@ -73,6 +70,10 @@ public static class AppearancePage
                 AppServices.Settings.Get("theme.forceOpaqueShell", opaqueDefault),
                 v =>
                 {
+                    // 防重入：页面重建时开关会被重新创建，如果值没变就什么都别做，
+                    // 否则「读设置 → 写设置 → 重画 → 再读」会来回翻转（日志里 5 次/秒的
+                    // 「不透明 / 跟随材质」抖动就是这么来的，用户看到的是背景闪、文字看不清）。
+                    if (AppServices.Settings.Get("theme.forceOpaqueShell", opaqueDefault) == v) return;
                     AppServices.Settings.Set("theme.forceOpaqueShell", v);
                     (Application.Current as App)?.MainView?.ApplyShellBackground();
                     Ui.Notifications.Toast(v ? "主窗口已改为不透明背景" : "主窗口改回毛玻璃背景", 3);
@@ -200,7 +201,18 @@ public static class AppearancePage
         AppServices.Settings.Set($"{prefix}.corner", tokens.CornerRadius);
         AppServices.Settings.Set($"{prefix}.cardColor", HexOf(tokens.CardColorOverride));
 
-        if (prefix == "theme.shell") Theme.ApplyShell(tokens);
+        if (prefix == "theme.shell")
+        {
+            // 一套外观：同一份令牌也写给桌面层（不写的话重启后桌面盒又回到默认值）
+            AppServices.Settings.Set("theme.desktop.scheme", tokens.Scheme.ToString());
+            AppServices.Settings.Set("theme.desktop.material", tokens.Material.ToString());
+            AppServices.Settings.Set("theme.desktop.intensity", tokens.MaterialIntensity);
+            AppServices.Settings.Set("theme.desktop.opacity", tokens.Opacity);
+            AppServices.Settings.Set("theme.desktop.corner", tokens.CornerRadius);
+            AppServices.Settings.Set("theme.desktop.cardColor", HexOf(tokens.CardColorOverride));
+            Theme.ApplyShell(tokens);
+            Theme.ApplyDesktop(tokens);
+        }
         else Theme.ApplyDesktop(tokens);
 
         (Application.Current as App)?.Desktop.ApplyLookToAll();

@@ -10,3 +10,11 @@ _re/
 .nuget/
 *.log
 TestResults/
+# 本机临时产物（不提交）
+_shots/
+_data/
+.dotnet-cli-home/
+*.MIT.bak
+launch-desknest.vbs
+shot-light.cmd
+shot-dark.cmd

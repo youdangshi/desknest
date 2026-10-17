@@ -20,6 +20,15 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // 崩溃要留证据：2026-10-17 出现「切到外观页 → 进程直接没了、日志一句都没有」。
+        // 这里把三类未处理异常都写进日志（不拦截、照常退，但至少能定位）。
+        DispatcherUnhandledException += (_, ex) =>
+            Log.Error("界面线程未处理异常：" + ex.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
+            Log.Error("进程级未处理异常：" + ex.ExceptionObject);
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, ex) =>
+            Log.Error("后台任务未观察异常：" + ex.Exception);
+
         base.OnStartup(e);
         // 所有自绘标题栏的弹窗，统一补上「Esc 关闭 + 右上角 ✕」：
         // 以前这些弹窗没有叉，用户只能翻半天找到"取消"才关得掉（2026-10-17 反馈）。

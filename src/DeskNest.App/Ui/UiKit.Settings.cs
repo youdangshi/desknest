@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -56,7 +56,9 @@ public static partial class UiKit
             {
                 Text = subtitle,
                 FontSize = Tokens.FontDescription,
-                Opacity = 0.72,
+                // 以前是 Foreground + Opacity 0.72：白底上算出来只有 2.7:1（用户说看不清就是这里）。
+                // 改成实色次要色（0.18 混背景），不再叠透明度。
+                Foreground = Theme.Current.SecondaryBrush,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, Tokens.Space2, 0, 0)
             });
@@ -123,7 +125,7 @@ public static partial class UiKit
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         TextBlock? label = null;
-        if (valueText is not null) label = Text(valueText, Tokens.FontDescription, secondary: true);
+        if (valueText is not null) label = Text(valueText, Tokens.FontDescription, secondary: false);   // 数值是数据，用正文字色
 
         var slider = Slider(min, max, value, v =>
         {
@@ -174,7 +176,7 @@ public static partial class UiKit
             {
                 Text = subtitle,
                 FontSize = Tokens.FontDescription,
-                Opacity = 0.72,
+                Foreground = Theme.Current.SecondaryBrush,   // 同设置行：不再用 0.72 透明度
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, Tokens.Space6, 0, 0)
             });

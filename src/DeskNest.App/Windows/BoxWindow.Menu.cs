@@ -179,7 +179,10 @@ public sealed partial class BoxWindow
     private object[] BuildAddBoxItems()
     {
         var others = AppServices.Repo.Boxes()
-            .Where(b => b.Id != _box.Id && !string.Equals(b.GroupId, _box.GroupId, StringComparison.OrdinalIgnoreCase))
+            // 两个都没进组的盒子 GroupId 都是 null：string.Equals(null,null) 会返回 true，
+            // 于是被判成"已经在同一组"全部过滤掉 —— 右键菜单永远只剩「没有其他盒子可并入」。
+            // 直接比引用/值：null != null 为 false，即两个未分组盒子视为不同组，可以合并。
+            .Where(b => b.Id != _box.Id && b.GroupId != _box.GroupId)
             .Take(10)
             .ToList();
 

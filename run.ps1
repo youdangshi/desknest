@@ -15,5 +15,5 @@ if (-not (Test-Path $dll)) {
     throw "还没编译（找不到 $dll）。先跑 .\build.ps1 $Config"
 }
 
-Start-Process -FilePath $dn -ArgumentList @("exec", $dll) -WorkingDirectory $root
+Start-Process -FilePath $dn -ArgumentList @("exec", $dll) -WorkingDirectory $root -WindowStyle Hidden
 Write-Host "已启动桌巢（$Config）。托盘图标右键可以退出。" -ForegroundColor Green
