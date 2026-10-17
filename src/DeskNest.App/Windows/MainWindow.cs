@@ -192,7 +192,7 @@ public sealed class MainWindow : FluentWindow
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var searchBox = UiKit.InputWithPlaceholder("搜索设置…（开机 / 透明度 / 统计 / 热键）", _ => { }, 320);
+        var searchBox = UiKit.InputWithPlaceholder("搜索设置…（颜色 / 透明度 / 备份 / 更新）", _ => { }, 320);
         searchBox.HorizontalAlignment = HorizontalAlignment.Center;
         searchBox.TextAlignment = TextAlignment.Left;
         searchBox.Margin = new Thickness(0);
@@ -211,9 +211,9 @@ public sealed class MainWindow : FluentWindow
         searchWrap.Children.Add(lens);
         Grid.SetColumn(searchWrap, 0);
 
+        // v2.0：顶栏只留一个真实动作（搜索/整理已下架，别留死按钮）
         var quick = new StackPanel { Orientation = Orientation.Horizontal };
-        quick.Children.Add(UiKit.Btn("快捷搜索", () => (Application.Current as App)?.ShowSearch(), true));
-        quick.Children.Add(UiKit.Btn("一键整理", () => OpenOrganizeWizard()));
+        quick.Children.Add(UiKit.Btn("＋ 新建收纳盒", () => NavigateTo("boxes"), true));
         Grid.SetColumn(quick, 1);
 
         grid.Children.Add(searchWrap);
