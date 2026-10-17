@@ -499,19 +499,20 @@ public sealed partial class BoxWindow
         foreach (var m in members)
         {
             var active = m.Id == _box.Id;
+            // 页签：文字 + 2px 强调色下划线（不用蓝色药丸，和 DeskBox 的标签栏观感一致）
             var tab = new Button
             {
                 Content = group.TitleDisplay == "Icon" ? "▦" : m.Name,
-                FontSize = 11.5,
-                Padding = new Thickness(8, 2, 8, 2),
-                Margin = new Thickness(2, 2, 2, 0),
-                Background = active ? Theme.Desktop.AccentBrush : Brushes.Transparent,
-                Foreground = active ? Brushes.White : Theme.Desktop.SecondaryBrush,
-                BorderThickness = new Thickness(0),
+                FontSize = 12,
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(1, 1, 1, 0),
+                Background = Brushes.Transparent,
+                Foreground = active ? Theme.Desktop.ForegroundBrush : Theme.Desktop.SecondaryBrush,
+                BorderThickness = new Thickness(0, 0, 0, 2),
+                BorderBrush = active ? Theme.Desktop.AccentBrush : Brushes.Transparent,
                 Cursor = Cursors.Hand
             };
             tab.Style = ControlStyles.NavButtonStyle();
-            if (active) tab.Background = Theme.Desktop.AccentBrush;
             tab.Click += (_, e) =>
             {
                 SwitchToMember(m.Id);

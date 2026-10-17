@@ -27,7 +27,7 @@ public sealed partial class BoxWindow
         if (_items.Count == 0)
         {
             _iconPanel.Children.Add(EmptyState());
-            _status.Text = "空盒 · 把文件拖进来，或点标题栏 ＋";
+            _status.Text = "";   // 中间的空态引导已经说了，别再重复一行（还会被底部裁掉）
             return;
         }
 

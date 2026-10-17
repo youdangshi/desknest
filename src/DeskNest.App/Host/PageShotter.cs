@@ -47,6 +47,16 @@ internal static class PageShotter
         window.Show();
         await Settle(900);
 
+        // 没有盒子时造一个演示盒子（只写隔离数据目录，绝不碰用户真实数据），
+        // 否则桌面层截图是一张空壁纸，根本看不出盒子外观有没有改对。
+        if (AppServices.Repo.Boxes().Count == 0)
+        {
+            var demo = new Core.BoxRecord { Name = "工作", Width = 320, Height = 372, MarginX = 120, MarginY = 120 };
+            AppServices.Repo.Upsert(demo);
+            app.Desktop.RestoreAll();
+            Log.Info("截图模式：已创建演示盒子（隔离数据目录）");
+        }
+
         var index = 0;
         // 设置页截图期间收起桌面层：收纳盒/组件挂在桌面层上，会和主窗口叠在一起
         app.Desktop.SetLayerVisible(false);

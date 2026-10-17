@@ -208,15 +208,16 @@ public sealed partial class BoxWindow : Window
     private StackPanel BuildHeaderButtons()
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 2, 0) };
-        panel.Children.Add(HeaderButton("＋", "添加文件（也可以直接把文件拖进来）", AddFilesByDialog));
-        panel.Children.Add(HeaderButton("⋯", "更多", ShowBoxMenu));
-        panel.Children.Add(HeaderButton("⌄", "卷起 / 展开", () =>
+        // 图标用 Segoe MDL2 Assets 的矢量字形（Win10 自带），比全角"＋ ⋯ ⌄ ✕"清晰得多
+        panel.Children.Add(HeaderButton("\uE710", "添加文件（也可以直接把文件拖进来）", AddFilesByDialog));
+        panel.Children.Add(HeaderButton("\uE712", "更多", ShowBoxMenu));
+        panel.Children.Add(HeaderButton("\uE70D", "卷起 / 展开", () =>
         {
             _box.RolledUp = !_box.RolledUp;
             AppServices.Repo.Upsert(_box);
             ApplyLook();
         }));
-        panel.Children.Add(HeaderButton("✕", "隐藏（托盘里可再显示）", () =>
+        panel.Children.Add(HeaderButton("\uE8BB", "隐藏（托盘里可再显示）", () =>
                 HideBox()));
         return panel;
     }
@@ -232,10 +233,11 @@ public sealed partial class BoxWindow : Window
             Content = glyph,
             Width = 22,
             Height = 22,
-            FontSize = 12,
+            FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"),
+            FontSize = 11,
             Padding = new Thickness(0),
             Margin = new Thickness(2, 0, 0, 0),
-            Background = new SolidColorBrush(Theme.Desktop.Foreground) { Opacity = 0.10 },
+            Background = new SolidColorBrush(Theme.Desktop.Foreground) { Opacity = 0.14 },
             BorderThickness = new Thickness(0),
             Foreground = foreground,
             Effect = UiKit.LegibleTextShadow(),
