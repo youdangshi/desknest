@@ -5,6 +5,8 @@
 
 ## 快照索引
 
+- 2026-10-17 15:2x —— **项目目录迁移**：`C:\Users\李\Desktop\项目组\desktop-organizer` → `C:\Users\李\Desktop\DeskNest`（整个 git 仓库连同 .git 一起搬，历史不变）。新增 `build.ps1`（一键编译，`-Smoke` 跑 56 项冒烟）与 `run.ps1`（启动 Debug/Release），两个脚本都路径无关、带 UTF-8 BOM，dotnet 与缓存仍指向 `C:\Users\李\.dotnet-sdk` 与 `C:\Users\李\Desktop\项目组\.dotnet-home|\.nuget`。
+
 - 2026-10-17 15:3x —— **v2.0 反馈修复第三/四批 + 图标换新**。
   修掉：①标题栏从横向 StackPanel 改 DockPanel（按钮永远贴右、标题省略号截断）；
   ②**折叠终于真缩到标题栏高度**（根因：构造时 MinHeight=96 会把 Height 夹回去，且 SizeChanged 把折叠高度写进记录；
