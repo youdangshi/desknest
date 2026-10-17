@@ -5,6 +5,16 @@
 
 ## 快照索引
 
+- 2026-10-17 15:3x —— **v2.0 反馈修复第三/四批 + 图标换新**。
+  修掉：①标题栏从横向 StackPanel 改 DockPanel（按钮永远贴右、标题省略号截断）；
+  ②**折叠终于真缩到标题栏高度**（根因：构造时 MinHeight=96 会把 Height 夹回去，且 SizeChanged 把折叠高度写进记录；
+  修法 = 折叠时临时放开 Min/MaxHeight、展开用记录高度、折叠不落盘）；③空盒提示改主前景色；
+  ④提示弹窗重写（紧凑卡片 / 最多 3 条 / 带关闭 / 三色）；⑤滑杆拖动不再重建整页（只在配色·材质变化时重建）。
+  截图模式新增：无盒子时造演示盒子、多拍一张「卷起」状态图（07-desktop-layer-rolled.png，实测只剩约 33px 标题条）。
+  **图标**：本机 ComfyUI（H:\\comfyui，内置 python）生成 → Pillow 圆角 → 七尺寸 ico 替换 Assets\\desknest.ico
+  （窗口 / 托盘 / exe 同源），旧图标备份在 docs/design/comfy/desknest-old.ico；空盒插画暂不采用（用户选「只用图标」）。
+  验证：Debug 编译 0 错误、冒烟 56/56；提交 bf443d7 与本条图标提交。
+
 - 2026-10-17 12:2x —— **v2.0 定稿并完成 M1**。文档链：`docs/14` 页面结构 · `docs/15` 盒子 UI 规范（+ `docs/design/box-ui-v2.png` 1:1 效果图）· `docs/16` 交互规格（含三级菜单全树、DeskBox 借鉴 12 条）· `docs/17` PRD（FR-01~15、D1–D10 决策）· `docs/18` 开发计划（T1–T23）· `docs/19` 后续开发 Backlog（P1–P4）。
   **M1 已完成**：导航 15 → **5 页**（概览/收纳盒/外观/数据与备份/关于），10 个页面只是不注册（代码保留）；6 个模块从 `DeskNest.App.csproj` 注释掉（发布包不再带 `modules\\`）；`BoxRecord.CardColor` + `Db.EnsureColumn("boxes","card_color","TEXT DEFAULT ''")` + Repository 读写（**列追加到末尾**避免索引错位）；冒烟 **53 → 56 项**全过。
   **顺手改进**：截图模式改用独立互斥名（`...shot`），**用户开着桌巢也能跑自动截图**，不用先退出。
