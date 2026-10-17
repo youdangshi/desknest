@@ -17,7 +17,7 @@ namespace DeskNest.App.Windows;
 public sealed partial class BoxWindow : Window
 {
     private readonly Border _root;
-    private readonly StackPanel _titleBar;
+    private readonly DockPanel _titleBar;
     private readonly WrapPanel _iconPanel;
     private readonly StackPanel _listPanel;
     private readonly ScrollViewer _scroll;
@@ -58,17 +58,38 @@ public sealed partial class BoxWindow : Window
         _titleText = UiKit.Text(box.Name, 13, bold: true);
         _titleText.Effect = UiKit.LegibleTextShadow();   // 半透明卡片压在亮壁纸上时靠这层描边保 readable
 
-        _titleBar = new StackPanel { Orientation = Orientation.Horizontal, Height = 30, Cursor = Cursors.SizeAll };
-        _titleBar.Children.Add(new TextBlock
+        // 标题栏 = DockPanel：左边"图标 + 标题 + 页签"随宽度伸缩，右边 4 个按钮永远贴右。
+        // 以前是横向 StackPanel，拉宽盒子时按钮会停在中间（用户 2026-10-17 反馈）。
+        _titleText.TextTrimming = TextTrimming.CharacterEllipsis;
+        _titleText.TextWrapping = TextWrapping.NoWrap;
+        var titleLeft = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 4, 0)
+        };
+        titleLeft.Children.Add(new TextBlock
         {
             Text = "▦",
             FontSize = 12,
-            Margin = new Thickness(8, 6, 6, 0),
+            Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
             Foreground = Theme.Desktop.SecondaryBrush
         });
-        _titleBar.Children.Add(_titleText);
-        _titleBar.Children.Add(_tabStrip);
-        _titleBar.Children.Add(BuildHeaderButtons());
+        titleLeft.Children.Add(_titleText);
+        titleLeft.Children.Add(_tabStrip);
+
+        var titleButtons = BuildHeaderButtons();
+        DockPanel.SetDock(titleButtons, Dock.Right);
+        _titleBar = new DockPanel
+        {
+            Height = 30,
+            Cursor = Cursors.SizeAll,
+            LastChildFill = true,
+            Background = Brushes.Transparent
+        };
+        _titleBar.Children.Add(titleButtons);
+        _titleBar.Children.Add(titleLeft);
 
         _iconPanel = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 2, 6, 6) };
         _listPanel = new StackPanel { Margin = new Thickness(4, 0, 4, 6) };

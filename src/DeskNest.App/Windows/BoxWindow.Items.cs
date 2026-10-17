@@ -48,7 +48,7 @@ public sealed partial class BoxWindow
         BorderThickness = new Thickness(1),
         BorderBrush = Theme.Desktop.BorderBrush,
         Child = UiKit.Col(
-            UiKit.Text("把文件拖进来", 12.5, secondary: true),
+            UiKit.Text("把文件拖进来", 13),
             UiKit.Text("直接拖放即可；也可以在标题栏点 ＋", 11, secondary: true))
     };
 
