@@ -15,53 +15,29 @@ public static class OverviewPage
     {
         var col = UiKit.Col();
         var boxes = AppServices.Repo.Boxes();
-        var widgets = AppServices.Repo.Widgets();
-        var todos = AppServices.Repo.Todos();
+        var items = AppServices.Repo.AllItems();
+        var totalMb = items.Sum(i => i.SizeBytes) / 1048576.0;
 
-        col.Children.Add(UiKit.PageHeader("概览", "桌巢在后台安静待着；需要它的时候，用下面的入口。"));
+        col.Children.Add(UiKit.PageHeader("概览", "桌面上的收纳情况，一眼看完。"));
 
         col.Children.Add(UiKit.Section("桌面状态",
-            UiKit.Row("🗂", $"收纳盒 {boxes.Count} 个", $"共 {AppServices.Repo.AllItems().Count} 个文件项", null,
+            UiKit.Row("🗂", $"收纳盒 {boxes.Count} 个", boxes.Count == 0 ? "还没有盒子，先建一个" : "点击进入「收纳盒」", null,
                 () => host.NavigateTo("boxes")),
-            UiKit.Row("🧩", $"桌面组件 {widgets.Count} 个", $"待办 {todos.Count(t => !t.IsDone)} 项未完成", null,
-                () => host.NavigateTo("widgets")),
-            UiKit.Row("🔍", $"搜索索引 {AppServices.Search.IndexedCount:N0} 条",
-                AppServices.Search.IsIndexing ? "正在后台建立索引…（可以正常使用）" : "已就绪，Alt+Space 呼出搜索", null,
-                () => (Application.Current as App)?.ShowSearch())));
+            UiKit.Row("📦", $"已收纳 {items.Count} 项", $"共 {totalMb:0.#} MB（真移动，不占双份空间）", null,
+                () => OpenDataRoot()),
+            UiKit.Row("📌", "托盘：常驻运行中", "左键单击 = 显示 / 隐藏所有盒子", null)));
 
         col.Children.Add(UiKit.Section("常用操作",
-            UiKit.ActionRow("⚡", "快捷搜索", "全盘搜索文件、应用与命令（Alt+Space）", "打开", () => (Application.Current as App)?.ShowSearch(), true),
-            UiKit.ActionRow("🧹", "一键整理桌面", "先预览再执行，随时可以回滚", "开始", () => host.OpenOrganizeWizard()),
-            UiKit.ActionRow("🆕", "新建收纳盒", "选「文件夹归集」或「桌面分区」两种方式", "新建", () => host.NavigateTo("boxes"))));
+            UiKit.ActionRow("🆕", "新建收纳盒", "只建空盒子，一个文件都不会动", "新建", () => host.NavigateTo("boxes"), true),
+            UiKit.ActionRow("👀", "显示 / 隐藏所有盒子", "想快速清屏时按一下（托盘上单击也一样）", "切换", () => Commands.ToggleLayerRequested?.Invoke()),
+            UiKit.ActionRow("📂", "打开数据目录", "盒子里的文件真实存在这里", "打开", () => OpenDataRoot())));
 
-        var runs = AppServices.Repo.Runs(5);
-        var rows = new List<UIElement>();
-        if (runs.Count == 0)
-        {
-            rows.Add(UiKit.Row("🕘", "还没有整理记录", "第一次整理后这里会出现可回滚的历史", null));
-        }
-        else
-        {
-            foreach (var run in runs)
-            {
-                var captured = run;
-                var subtitle = $"{captured.StartedAt.LocalDateTime:MM-dd HH:mm} · {captured.MovedCount} 项" +
-                               (captured.Undone ? " · 已回滚" : "");
-                UIElement? control = captured.Undone || captured.MovedCount == 0
-                    ? null
-                    : UiKit.Btn("回滚", () =>
-                    {
-                        var (restored, failed) = AppServices.Organizer.Undo(captured);
-                        Ui.Notifications.Toast($"已回滚：还原 {restored} 项，失败 {failed} 项");
-                        host.RefreshCurrent();
-                    });
-                rows.Add(UiKit.Row("🕘", captured.Trigger == "auto" ? "自动整理" : "手动整理", subtitle, control));
-            }
-        }
-        col.Children.Add(UiKit.Section("最近整理（可回滚）", rows.ToArray()));
+        if (boxes.Count == 0)
+            col.Children.Add(UiKit.Banner(BannerKind.Info,
+                "桌面上的文件还没地方放？先建一个盒子，再把文件拖进去 —— 文件会真的移进盒子，桌面立刻干净。",
+                "第一次使用"));
 
-        col.Children.Add(UiKit.Section("熟悉一下",
-            // 可展开行：开关 + 折叠箭头（像 DeskBox 的「开机自动启动 → 静默启动」）
+        col.Children.Add(UiKit.Section("开机与启动",
             UiKit.ExpanderRow("🚀", "开机自动启动", "登录 Windows 后在后台启动",
                 UiKit.Toggle(AppServices.Settings.Get("app.autoStart", false), v =>
                 {
@@ -69,26 +45,24 @@ public static class OverviewPage
                     Native.Win32.AutoStart.SetEnabled(v);
                 }),
                 UiKit.ToggleRow("🌙", "静默启动", "启动时不弹主窗口，只留托盘图标",
-                    AppServices.Settings.Get("app.silentStart", false), v => AppServices.Settings.Set("app.silentStart", v)),
-                UiKit.ToggleRow("🔔", "双击桌面空白处切换桌面图标", "和 ZenDesktop 那种效果一致，可随时关掉",
-                    AppServices.Settings.Get("desktop.doubleClick", true), v => AppServices.Settings.Set("desktop.doubleClick", v))),
-            UiKit.ToggleRow("🖥", "隐藏桌面图标", "图标与桌面盒可以共存：先隐藏图标，只留分类盒",
-                AppServices.Settings.Get("desktop.iconsHidden", false), v =>
-                {
-                    AppServices.Settings.Set("desktop.iconsHidden", v);
-                    Native.Win32.DesktopIcons.SetVisible(!v);
-                }),
-            // 说明条：DeskBox 里也有一条几乎一样的（"为什么快捷键有时没有反应?"）
-            UiKit.Row("⌨", "快捷键", "Alt+Space 呼出搜索，Alt+` 显示/隐藏桌面层", null)));
-
-        col.Children.Add(UiKit.Banner(BannerKind.Info,
-            "如果快捷键有时没反应：当前窗口是以管理员身份运行的（例如任务管理器），Windows 会暂时屏蔽全局热键给它的输入。这是系统限制，不是桌巢的问题。",
-            "为什么快捷键有时没有反应？"));
+                    AppServices.Settings.Get("app.silentStart", false), v => AppServices.Settings.Set("app.silentStart", v)))));
 
         col.Children.Add(UiKit.Banner(BannerKind.Warning,
-            "收纳盒的存储目录默认在 C 盘（" + AppPaths.DefaultManagedRoot + "）。把文件收进盒子里只是「换了位置」，不会释放 C 盘空间；想省 C 盘空间，请在「收纳盒」页把存储位置改到其他盘。",
+            "收纳盒的存储目录默认在 C 盘（" + AppPaths.DefaultManagedRoot + "）。把文件收进盒子里只是「换了位置」，不会释放 C 盘空间。",
             "关于收纳与磁盘空间"));
+
         return col;
+    }
+
+    /// <summary>打开数据目录（收纳盒里文件真实存放的地方）。</summary>
+    private static void OpenDataRoot()
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(AppPaths.DataRoot);
+            System.Diagnostics.Process.Start("explorer.exe", AppPaths.DataRoot);
+        }
+        catch (Exception ex) { Ui.Notifications.Toast("打不开数据目录：" + ex.Message); }
     }
 }
 
