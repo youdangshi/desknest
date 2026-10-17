@@ -21,6 +21,10 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // 所有自绘标题栏的弹窗，统一补上「Esc 关闭 + 右上角 ✕」：
+        // 以前这些弹窗没有叉，用户只能翻半天找到"取消"才关得掉（2026-10-17 反馈）。
+        EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
+            new RoutedEventHandler(DecorateDialog));
         // 截图模式不启动全盘索引：它会在几十秒后随进程一起被关掉，留下一份残缺索引
         AppServices.Initialize(startIndexing: PageShotter.OutputDir is null);
 
@@ -173,12 +177,24 @@ public partial class App : Application
     /// <summary>隐藏快捷搜索面板（截图模式收尾用；用户按 Esc 走的是面板自己的逻辑）。</summary>
     public void HideSearch() => _searchPanel?.HidePanel();
 
+    /// <summary>真正的退出流程（关闭主窗口只是收进托盘，不算退出）。</summary>
+    internal static bool IsShuttingDown { get; private set; }
+
     public void ShowMain(string? page = null)
     {
         try
         {
-            Log.Info($"ShowMain 开始（page={page ?? "-"}，已有窗口={_mainWindow is not null}）");
-            _mainWindow ??= new MainWindow();
+            Log.Info($"ShowMain 开始（page={page ?? "-"}，已有窗口={_mainWindow is not null}，已销毁={_mainClosed}）");
+            // 关键：WPF 的窗口一旦真的关掉（Closed），就再也不能 Show() 了
+            // （会抛「关闭窗口后，无法设置可见性，也无法调用 Show…」）。
+            // 之前这里只判空不判"已关闭"，所以用户关过一次主窗口后，
+            // 托盘里的「设置…」「打开主窗口」就永远打不开了 —— 就是那条报错。
+            if (_mainWindow is null || _mainClosed)
+            {
+                _mainWindow = new MainWindow();
+                _mainClosed = false;
+                _mainWindow.Closed += (_, _) => _mainClosed = true;
+            }
             Log.Info("MainWindow 已创建");
             if (page is not null) _mainWindow.NavigateTo(page);
             _mainWindow.Show();
@@ -199,13 +215,85 @@ public partial class App : Application
         _mainWindow?.OpenOrganizeWizard();
     }
 
+    /// <summary>主窗口是否已经被真正关掉（关掉后必须重建）。</summary>
+    private bool _mainClosed;
+
     public DesktopWindows Desktop => _desktop;
 
     /// <summary>主窗口（截图模式与测试要用到；未创建时返回 null）。命名避开 WPF 生成的 <c>App.Main</c>。</summary>
     public MainWindow? MainView => _mainWindow;
 
+    /// <summary>给"没有系统标题栏的弹窗"补一个关闭按钮（幂等：只处理一次）。</summary>
+    private static void DecorateDialog(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Window w) return;
+        try
+        {
+            if (w.Tag is not null) return;                    // 打过标记的窗口（吐司等）不处理
+            if (w.WindowStyle != WindowStyle.None) return;     // 有系统标题栏的本来就有 ✕
+            // 必须写全名，否则 "MainWindow" 会被解析成 Application.MainWindow 属性
+            if (w is DeskNest.App.Windows.MainWindow or BoxWindow or WidgetWindow or PetWindow) return;
+
+            w.PreviewKeyDown += (_, k) =>
+            {
+                if (k.Key != System.Windows.Input.Key.Escape) return;
+                k.Handled = true;
+                w.Close();
+            };
+
+            if (HasExitButton(w) || w.Content is not FrameworkElement content) return;
+
+            var grid = new System.Windows.Controls.Grid();
+            w.Content = null;
+            grid.Children.Add(content);
+            var close = new System.Windows.Controls.Border
+            {
+                Width = 26,
+                Height = 26,
+                CornerRadius = new CornerRadius(6),
+                Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(
+                    30, Ui.Theme.Current.Foreground.R, Ui.Theme.Current.Foreground.G, Ui.Theme.Current.Foreground.B)),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 6, 8, 0),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                ToolTip = "关闭（Esc）",
+                Child = new System.Windows.Controls.TextBlock
+                {
+                    Text = "✕",
+                    FontSize = 13,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = Ui.Theme.Current.ForegroundBrush
+                }
+            };
+            close.MouseLeftButtonUp += (_, _) => { try { w.Close(); } catch { } };
+            grid.Children.Add(close);
+            w.Content = grid;
+            Log.Info("已给弹窗补上关闭按钮：" + (string.IsNullOrEmpty(w.Title) ? w.GetType().Name : w.Title));
+        }
+        catch (Exception ex) { Log.Warn("给弹窗加关闭按钮失败：" + ex.Message); }
+    }
+
+    /// <summary>弹窗里已经有"取消 / 关闭 / 完成"这类按钮就不再加叉（避免两个关闭入口）。</summary>
+    private static bool HasExitButton(DependencyObject root)
+    {
+        int n;
+        try { n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); } catch { return false; }
+        for (var i = 0; i < n; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is System.Windows.Controls.Button b && b.Content is string s &&
+                (s.Contains("取消") || s.Contains("关闭") || s.Contains("完成") || s.Contains("知道了") || s.Contains("好的")))
+                return true;
+            if (HasExitButton(child)) return true;
+        }
+        return false;
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
+        IsShuttingDown = true;
         try
         {
             _tray?.Dispose();

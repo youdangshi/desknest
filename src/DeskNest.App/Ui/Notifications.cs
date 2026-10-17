@@ -42,7 +42,8 @@ public static class Notifications
                     Topmost = true,
                     ResizeMode = ResizeMode.NoResize,
                     SizeToContent = SizeToContent.WidthAndHeight,
-                    Content = border
+                    Content = border,
+                    Tag = "toast"          // 标记：这类窗口不要被"统一加关闭按钮"处理
                 };
 
                 var area = SystemParameters.WorkArea;

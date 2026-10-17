@@ -20,6 +20,14 @@ public sealed partial class BoxWindow
             _root.BorderBrush = Theme.Current.AccentBrush;
             _root.BorderThickness = new Thickness(2);
         }
+        // 此电脑 / 回收站 / 网络 这些是 Shell 对象，没有文件路径，拖过来只有文本（名字）。
+        // 以前这里一律 None，系统就显示"禁止"光标、Drop 根本不触发 —— 于是"此电脑拖不进盒子"。
+        else if (e.Data.GetDataPresent(DataFormats.UnicodeText) || e.Data.GetDataPresent(DataFormats.Text))
+        {
+            e.Effects = DragDropEffects.Copy;
+            _root.BorderBrush = Theme.Current.AccentBrush;
+            _root.BorderThickness = new Thickness(2);
+        }
         else
         {
             e.Effects = DragDropEffects.None;

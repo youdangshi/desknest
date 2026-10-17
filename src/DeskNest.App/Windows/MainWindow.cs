@@ -55,6 +55,16 @@ public sealed class MainWindow : FluentWindow
         WindowBackdropType = FluentTheme.BackdropFor(Theme.Shell.Material);
         ExtendsContentIntoTitleBar = true;
 
+        // 点右上角 ✕ 只是收进托盘（托盘应用的标准做法）。真正退出走托盘菜单「退出桌巢」，
+        // 否则窗口被销毁后既不能重新显示，也会让托盘里的入口全部报错。
+        Closing += (_, e) =>
+        {
+            if (DeskNest.App.App.IsShuttingDown) return;
+            e.Cancel = true;
+            Hide();
+            Ui.Notifications.Toast("桌巢已收进托盘（托盘右键可以再打开）", 3);
+        };
+
         RegisterPages();
 
         _contentHost = new Border { Padding = new Thickness(28, 10, 28, 20) };
@@ -389,6 +399,23 @@ public sealed class MainWindow : FluentWindow
 
     public void RefreshCurrent() => NavigateTo(_current);
 
+    /// <summary>
+    /// 主窗口背景：只有"材质真的能用"时才透明（让 Mica/亚克力透上来），否则退回实色背景。
+    /// Windows 10 上亚克力经常不生效，透明窗口会变成"整片发白、文字看不清"
+    /// （用户 2026-10-17 反馈的截图就是这种状态）。
+    /// </summary>
+    public void ApplyShellBackground()
+    {
+        try
+        {
+            var opaque = AppServices.Settings.Get("theme.forceOpaqueShell", Environment.OSVersion.Version.Build < 22000);
+            WindowBackdropType = opaque ? WindowBackdropType.None : FluentTheme.BackdropFor(Theme.Shell.Material);
+            Background = opaque ? Theme.Shell.BackgroundBrush : System.Windows.Media.Brushes.Transparent;
+            Log.Info($"主窗口背景：{(opaque ? "不透明（材质未启用）" : "跟随材质 " + Theme.Shell.Material)}");
+        }
+        catch (Exception ex) { Log.Warn("设置主窗口背景失败：" + ex.Message); }
+    }
+
     private void OnThemeChanged()
     {
         try
@@ -396,7 +423,7 @@ public sealed class MainWindow : FluentWindow
             FluentTheme.Apply(Theme.Shell.Scheme, Theme.Shell.Material);
             WindowBackdropType = FluentTheme.BackdropFor(Theme.Shell.Material);
             // 用 Mica/亚克力时不要把窗口刷成不透明色，否则会把材质盖住
-            if (!AppServices.Settings.Get("theme.forceOpaqueShell", false)) Background = System.Windows.Media.Brushes.Transparent;
+            ApplyShellBackground();
             Foreground = Theme.Shell.ForegroundBrush;
             BuildNav();
             NavigateTo(_current);

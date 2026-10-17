@@ -66,6 +66,18 @@ public static class AppearancePage
                     Ui.Notifications.Toast("已改为各自独立样式", 4);
                 })));
 
+        var opaqueDefault = Environment.OSVersion.Version.Build < 22000;
+        col.Children.Add(UiKit.Section("主窗口背景（看不清文字时改这里）",
+            UiKit.ToggleRow("🧊", "用不透明背景",
+                "关掉毛玻璃，主窗口固定用实色底。Windows 10 上亚克力经常不生效，透明窗口会让文字看不清",
+                AppServices.Settings.Get("theme.forceOpaqueShell", opaqueDefault),
+                v =>
+                {
+                    AppServices.Settings.Set("theme.forceOpaqueShell", v);
+                    (Application.Current as App)?.MainView?.ApplyShellBackground();
+                    Ui.Notifications.Toast(v ? "主窗口已改为不透明背景" : "主窗口改回毛玻璃背景", 3);
+                })));
+
         var background = AppServices.Settings.Get("theme.background.image", "");
         col.Children.Add(UiKit.Section("动效与背景",
             UiKit.ToggleRow("🌀", "减少动效", "无障碍：动画降级为淡入淡出",
