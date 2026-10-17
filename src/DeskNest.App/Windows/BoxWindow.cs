@@ -278,7 +278,12 @@ public sealed partial class BoxWindow : Window
         _titleText.Text = _box.Name;
         // 标题栏给一条极淡的底：卡片透明（0.3）时，文字直接压在壁纸上会很糊；
         // 这条底让标题与按钮永远有一致的背景，配合 LegibleTextShadow 就能保证可读。
-        _titleBar.Background = new SolidColorBrush(Theme.Desktop.Foreground) { Opacity = 0.08 };
+        // 标题栏可读性：卡片很透（用户把透明度调到 0.3）时，标题栏单独用"接近实色"的卡片色做底，
+        // 保证标题与四个按钮永远清晰；卡片够实时就退回淡描边效果（不抢内容）。
+        var paint = t.ResolveCardPaint();
+        _titleBar.Background = paint.A < 150
+            ? new SolidColorBrush(Color.FromArgb(232, paint.R, paint.G, paint.B))
+            : new SolidColorBrush(Theme.Desktop.Foreground) { Opacity = 0.08 };
         _status.Foreground = Theme.Desktop.ForegroundBrush;
         ApplyTitleStyle();
     }
