@@ -415,17 +415,28 @@ public sealed class MainWindow : FluentWindow
         catch (Exception ex) { Log.Warn("设置主窗口背景失败：" + ex.Message); }
     }
 
+    private Ui.ColorScheme? _appliedScheme;
+    private Ui.MaterialKind? _appliedMaterial;
+
     private void OnThemeChanged()
     {
         try
         {
+            var appearanceChanged = _appliedScheme != Theme.Shell.Scheme || _appliedMaterial != Theme.Shell.Material;
+            _appliedScheme = Theme.Shell.Scheme;
+            _appliedMaterial = Theme.Shell.Material;
             FluentTheme.Apply(Theme.Shell.Scheme, Theme.Shell.Material);
             WindowBackdropType = FluentTheme.BackdropFor(Theme.Shell.Material);
             // 用 Mica/亚克力时不要把窗口刷成不透明色，否则会把材质盖住
             ApplyShellBackground();
             Foreground = Theme.Shell.ForegroundBrush;
-            BuildNav();
-            NavigateTo(_current);
+            // 只有配色/材质真的变了才重建导航与页面。
+            // 以前滑杆每动一下都重建整页 —— 这就是"调节格子参数好卡"的根因。
+            if (appearanceChanged)
+            {
+                BuildNav();
+                NavigateTo(_current);
+            }
         }
         catch (Exception ex)
         {

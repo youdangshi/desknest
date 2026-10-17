@@ -24,6 +24,9 @@ public sealed partial class BoxWindow : Window
     private readonly TextBlock _status;
     private readonly StackPanel _tabStrip;
     private readonly TextBlock _titleText;
+
+    /// <summary>卷起前记住的展开高度（卷起时窗口会缩到只剩标题栏）。</summary>
+    private double? _expandedHeight;
     private System.Windows.Controls.ContextMenu? _menu;
     private BoxRecord _box;
     private bool _attachedToDesktop;
@@ -258,6 +261,18 @@ public sealed partial class BoxWindow : Window
         _root.BorderBrush = Theme.Desktop.BorderBrush;
         _root.Opacity = _box.AutoHide ? 0.35 : 1.0;
         _scroll.Visibility = _box.RolledUp ? Visibility.Collapsed : Visibility.Visible;
+        // 卷起不是"藏起内容"，而是整个窗口缩到只剩标题栏（用户 2026-10-17 反馈）
+        var barHeight = _titleBar.Height > 1 ? _titleBar.Height : 30;
+        if (_box.RolledUp)
+        {
+            _expandedHeight ??= Height;
+            Height = barHeight + 2;
+        }
+        else if (_expandedHeight is { } restored)
+        {
+            Height = Math.Max(restored, barHeight + 2);
+            _expandedHeight = null;
+        }
         _iconPanel.Visibility = _box.ViewMode == "Icon" ? Visibility.Visible : Visibility.Collapsed;
         _listPanel.Visibility = _box.ViewMode == "Icon" ? Visibility.Collapsed : Visibility.Visible;
         _titleText.Text = _box.Name;

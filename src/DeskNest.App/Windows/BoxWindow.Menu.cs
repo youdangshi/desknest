@@ -67,8 +67,9 @@ public sealed partial class BoxWindow
         menu.Items.Add(Sub("添加格子", BuildAddBoxItems()));
         menu.Items.Add(Sub("更多操作", BuildMoreItems()));
         menu.Items.Add(new Separator());
-        menu.Items.Add(Item("删除盒子（盒内文件还原到原位置）", DeleteBox, danger: true));
-        menu.Items.Add(Item("解散盒子（盒内文件全部回到桌面）", DissolveBox, danger: true));
+        // 只留一个「解散格子」：文件逐个还原到原位置（原位置不在才回桌面）。
+        // 以前"删除盒子 / 解散盒子"两个入口语义重叠，用户明确说没必要（2026-10-17）。
+        menu.Items.Add(Item("解散格子（盒内文件还原到原位置）", DeleteBox, danger: true));
     }
 
     /// <summary>解散：盒内文件全部丢回桌面，盒子消失。想"我不关心它原来在哪，只要回到桌面"时用这个。</summary>
