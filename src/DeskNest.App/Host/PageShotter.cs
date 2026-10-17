@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
@@ -200,6 +201,10 @@ internal static class PageShotter
                 Log.Warn("截图失败：拿不到窗口矩形 " + path);
                 return;
             }
+            // 先让窗口"自己画自己"：这样即使有别的窗口盖在同一块屏幕区域上（浏览器、聊天软件…），
+            // 拍到的也只会是本窗口 —— 既保证文档截图正确，也避免把用户的其它窗口拍进文档。
+            if (SaveWindowContent(hwnd, b.W, b.H, path)) return;
+            Log.Warn("PrintWindow 抓不到窗口内容，退化为按屏幕区域抓图：" + path);
             SaveRegion(b.X, b.Y, b.W, b.H, path);
         }
         catch (Exception ex) { Log.Warn($"截图失败 {path}：{ex.Message}"); }
@@ -214,6 +219,63 @@ internal static class PageShotter
             SaveRegion(b.Value.X, b.Value.Y, b.Value.Width, b.Value.Height, path);
         }
         catch (Exception ex) { Log.Warn($"截图失败 {path}：{ex.Message}"); }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool PrintWindow(IntPtr hwnd, IntPtr hdcBlt, uint nFlags);
+
+    /// <summary>PW_RENDERFULLCONTENT：Win10 1809+ 支持，能把 DWM 合成的窗口内容完整画进 DC。</summary>
+    private const uint PwRenderFullContent = 0x00000002;
+
+    /// <summary>
+    /// 只抓**这个窗口自己的内容**（不受别的窗口遮挡）。成功返回 true。
+    /// 失败（老系统 / 特殊窗口）时由调用方退回按屏幕区域抓图。
+    /// </summary>
+    private static bool SaveWindowContent(IntPtr hwnd, int w, int h, string path)
+    {
+        try
+        {
+            using var bmp = new System.Drawing.Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = System.Drawing.Graphics.FromImage(bmp))
+            {
+                var hdc = g.GetHdc();
+                bool ok;
+                try { ok = PrintWindow(hwnd, hdc, PwRenderFullContent); }
+                finally { g.ReleaseHdc(hdc); }
+                if (!ok) return false;
+            }
+            ForceOpaque(bmp);
+            bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("PrintWindow 抓图失败：" + ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 合成窗口的 PrintWindow 结果常常 alpha 全 0（存成 PNG 会变成"全透明/全黑"），
+    /// 这里一次性把 alpha 拉满。用 LockBits 整块处理，比逐像素 GetPixel 快几个数量级。
+    /// </summary>
+    private static void ForceOpaque(System.Drawing.Bitmap bmp)
+    {
+        System.Drawing.Imaging.BitmapData? data = null;
+        try
+        {
+            var rect = new System.Drawing.Rectangle(0, 0, bmp.Width, bmp.Height);
+            data = bmp.LockBits(rect, System.Drawing.Imaging.ImageLockMode.ReadWrite,
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            var len = data.Stride * bmp.Height;
+            var buf = new byte[len];
+            Marshal.Copy(data.Scan0, buf, 0, len);
+            var anyAlpha = false;
+            for (var i = 3; i < buf.Length; i += 4) if (buf[i] != 0) { anyAlpha = true; break; }
+            if (!anyAlpha) for (var i = 3; i < buf.Length; i += 4) buf[i] = 255;
+            Marshal.Copy(buf, 0, data.Scan0, len);
+        }
+        finally { if (data is not null) bmp.UnlockBits(data); }
     }
 
     /// <summary>按屏幕区域抓图（GDI 抓的是合成后的画面，所以 Mica/亚克力材质会如实出现在截图里）。</summary>

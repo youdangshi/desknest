@@ -166,8 +166,12 @@ public static class AppearancePage
             strip.Children.Add(dot);
         }
         strip.Children.Add(UiKit.Btn("跟配色方案", () => Save(prefix, read, t => t.CardColorOverride = null, host), true));
-        return UiKit.Row("🎨", "卡片颜色",
+        var row = (FrameworkElement)UiKit.Row("🎨", "卡片颜色",
             "盒子与组件真正的底色；不选＝跟随上面的配色方案（选了浅色会自动换成深色文字）", strip);
+        // 只给收纳窗口那套：设计窗口没有"卡片"这一层（底色由配色方案决定），
+        // 而且自定义色会连带改文字色，放在设计窗口上只会把主界面搞乱。
+        if (prefix != "theme.desktop") row.Visibility = Visibility.Collapsed;
+        return row;
     }
 
     /// <summary>把一次修改写进设置并立即生效（设计窗口要重建页面，收纳窗口只需刷新桌面层）。</summary>
