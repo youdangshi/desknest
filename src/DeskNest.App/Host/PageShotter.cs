@@ -99,6 +99,18 @@ internal static class PageShotter
             SaveScreen(Path.Combine(dir, $"{++index:00}-desktop-layer.png"));
             Log.Info("截图 桌面层");
 
+            // 再拍一张"卷起（只剩标题栏）"，用来验收折叠是否真的改了窗口高度
+            var collapseBox = app.Desktop.Boxes.Values.FirstOrDefault();
+            if (collapseBox is not null)
+            {
+                collapseBox.SetRolledUpForShot(true);
+                await Settle(500);
+                SaveScreen(Path.Combine(dir, $"{++index:00}-desktop-layer-rolled.png"));
+                Log.Info("截图 桌面层（卷起）");
+                collapseBox.SetRolledUpForShot(false);
+                await Settle(300);
+            }
+
             // 菜单在拍摄期间一直用第一个盒子，这里确认它确实在屏幕内
             var shotBox = app.Desktop.Boxes.Values.FirstOrDefault();
             if (shotBox is not null)

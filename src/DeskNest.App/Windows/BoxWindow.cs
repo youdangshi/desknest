@@ -273,6 +273,13 @@ public sealed partial class BoxWindow : Window
         return b;
     }
 
+    /// <summary>自动化（截图）用：直接设置卷起状态并立即重画，不写库。</summary>
+    public void SetRolledUpForShot(bool rolled)
+    {
+        _box.RolledUp = rolled;
+        ApplyLook();
+    }
+
     public void ApplyLook()
     {
         var t = Theme.ResolveDesktop(_box.Material, _box.MaterialIntensity, _box.Opacity, _box.CornerRadius,
@@ -286,13 +293,23 @@ public sealed partial class BoxWindow : Window
         var barHeight = _titleBar.Height > 1 ? _titleBar.Height : 30;
         if (_box.RolledUp)
         {
-            _expandedHeight ??= Height;
+            // 用"记录里的高度"而不是当前 Height，避免上次被压小后越折越扁
+            _expandedHeight ??= Math.Max(_box.Height, 96);
+            // 关键：MinHeight/MaxHeight 会夹住 Height。不放开的话 Height 会被夹回 96，
+            // 看起来就是"内容折叠了、盒子没折叠"（用户 2026-10-17 反馈）。
+            MinHeight = barHeight + 2;
+            MaxHeight = barHeight + 2;
             Height = barHeight + 2;
         }
-        else if (_expandedHeight is { } restored)
+        else
         {
-            Height = Math.Max(restored, barHeight + 2);
-            _expandedHeight = null;
+            MinHeight = 96;
+            MaxHeight = double.PositiveInfinity;
+            if (_expandedHeight is { } restored)
+            {
+                Height = Math.Max(restored, 96);
+                _expandedHeight = null;
+            }
         }
         _iconPanel.Visibility = _box.ViewMode == "Icon" ? Visibility.Visible : Visibility.Collapsed;
         _listPanel.Visibility = _box.ViewMode == "Icon" ? Visibility.Collapsed : Visibility.Visible;
@@ -599,7 +616,8 @@ public sealed partial class BoxWindow : Window
             if (!_box.LockSize)
             {
                 _box.Width = Width;
-                _box.Height = Height;
+                if (!_box.RolledUp)          // 折叠时的高度不是用户想要的盒子高度，别存
+                    _box.Height = Height;
             }
             AppServices.Repo.Upsert(_box);
         }
