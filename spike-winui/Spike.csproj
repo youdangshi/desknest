@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
@@ -7,9 +7,10 @@
     <WindowsPackageType>None</WindowsPackageType>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <EnableMsixTooling>false</EnableMsixTooling>
+    <!-- 不要关 MSIX tooling：它会连带关掉 reg-free WinRT 清单嵌入，导致 RoGetActivationFactory 失败 -->
     <EnableDefaultXamlItems>false</EnableDefaultXamlItems>
     <StartupObject>Spike</StartupObject>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
 
