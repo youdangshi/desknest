@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Media;
 
 namespace DeskNest.App.Ui;
@@ -128,8 +128,8 @@ public sealed class ThemeTokens
     public Brush BackgroundBrush => _bgBrush ?? new SolidColorBrush(Background);
     public Brush ForegroundBrush => _fgBrush ?? new SolidColorBrush(Foreground);
     /// <summary>次要/更弱的前景色（与背景混合，深浅色都自然）。0.38 → 0.30：白底实测对比度 3.4 偏低。</summary>
-    public Color SecondaryColor => Mix(Foreground, Background, 0.18);
-    public Color TertiaryColor => Mix(Foreground, Background, 0.34);
+    public Color SecondaryColor => Mix(Foreground, Background, 0.12);
+    public Color TertiaryColor => Mix(Foreground, Background, 0.24);
 
     private static Color Mix(Color fg, Color bg, double towardBg)
     {

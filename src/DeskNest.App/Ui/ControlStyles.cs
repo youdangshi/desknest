@@ -57,12 +57,13 @@ public static class ControlStyles
         style.Setters.Add(new Setter(FrameworkElement.TagProperty, new CornerRadius(Tokens.CornerControl)));
         // 主按钮：一点竖向渐变 + 极淡投影，让它从一堆描边按钮里"立"起来；
         // 次要按钮保持纯色描边，避免整页都在发光。
-        style.Setters.Add(new Setter(Control.BackgroundProperty, accent ? AccentFill() : Theme.Current.CardBrush));
+        // 次要按钮用透明底 + 描边：放在白卡片上时"卡片白 = 按钮白"的隐形问题就没了
+        style.Setters.Add(new Setter(Control.BackgroundProperty, accent ? (Brush)AccentFill() : Brushes.Transparent));
         // 主按钮的文字颜色按强调色的亮度自动取（浅色强调色用近黑字），见 Contrast.BestForegroundOn：
         // 写死白字的话，用户把强调色改成浅黄/浅青就会"白底白字"。
         style.Setters.Add(new Setter(Control.ForegroundProperty,
             accent ? new SolidColorBrush(Contrast.BestForegroundOn(Theme.Current.Accent)) : Theme.Current.ForegroundBrush));
-        style.Setters.Add(new Setter(Control.BorderBrushProperty, Theme.Current.BorderBrush));
+        style.Setters.Add(new Setter(Control.BorderBrushProperty, accent ? Theme.Current.BorderBrush : Tint(0.22)));
         if (accent)
         {
             var shadow = new System.Windows.Media.Effects.DropShadowEffect
@@ -172,7 +173,7 @@ public static class ControlStyles
         var style = new Style(typeof(TextBox));
         style.Setters.Add(new Setter(Control.BackgroundProperty, Theme.Current.CardBrush));
         style.Setters.Add(new Setter(Control.ForegroundProperty, Theme.Current.ForegroundBrush));
-        style.Setters.Add(new Setter(Control.BorderBrushProperty, Theme.Current.BorderBrush));
+        style.Setters.Add(new Setter(Control.BorderBrushProperty, Tint(0.22)));   // 白底白框＝看不见，给描边
         style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
         style.Setters.Add(new Setter(Control.PaddingProperty,
             new Thickness(Tokens.Space12, Tokens.Space6, Tokens.Space12, Tokens.Space6)));
@@ -232,6 +233,7 @@ public static class ControlStyles
         style.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 32d));
         style.Setters.Add(new Setter(Control.BackgroundProperty, Theme.Current.CardBrush));
         style.Setters.Add(new Setter(Control.ForegroundProperty, Theme.Current.ForegroundBrush));
+        style.Setters.Add(new Setter(Control.BorderBrushProperty, Tint(0.22)));   // 白底白框＝看不见，给描边
         return style;
     }
 
