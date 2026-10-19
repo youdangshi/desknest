@@ -494,9 +494,31 @@ public sealed partial class BoxWindow
     /// 规范来自 DeskBox（见 docs/26 §1）：不额外加标签条，切换不改窗口位置/尺寸/句柄。
     /// 以前这里是"每个成员一个页签"，成员一多就挤掉标题、还得做溢出菜单 —— 已废。
     /// </summary>
+    /// <summary>
+    /// 从数据库把「我是谁、我在哪个组」重新读一遍再重画选择器。
+    /// 合并是另一个盒子发起的，本窗口手里的 _box 还是旧快照；不这么同步，
+    /// 非活动成员永远不显示组选择器（截图模式里一眼就能看出来）。
+    /// </summary>
+    public void SyncFromRepository()
+    {
+        var fresh = AppServices.Repo.Box(_box.Id);
+        if (fresh is null) return;
+        _box.GroupId = fresh.GroupId;
+        if (!string.Equals(_box.Name, fresh.Name, StringComparison.Ordinal))
+        {
+            _box.Name = fresh.Name;
+            _titleText.Text = fresh.Name;
+            Title = fresh.Name;
+        }
+        RefreshGroupTabsPublic();
+    }
     public void RefreshGroupTabsPublic()
     {
         _tabStrip.Children.Clear();
+        // 先把"我在哪个组"从库里刷新一遍：合并是**另一个盒子**发起的，
+        // 这个窗口手里的 _box 还是合并前的快照（GroupId=null），不刷新就永远不显示选择器。
+        var fresh = AppServices.Repo.Box(_box.Id);
+        if (fresh is not null) _box.GroupId = fresh.GroupId;
         if (_box.GroupId is null) return;
         var group = AppServices.Repo.Groups().FirstOrDefault(g => g.Id == _box.GroupId);
         if (group is null) return;

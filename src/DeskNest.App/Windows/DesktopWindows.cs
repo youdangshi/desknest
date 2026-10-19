@@ -73,7 +73,7 @@ public sealed class DesktopWindows
             {
                 win.Show();
                 win.ReloadItems();
-                win.RefreshGroupTabsPublic();   // 组内标签要重新画，否则并进来的新成员不出现在标签条上
+                win.SyncFromRepository();   // 从库里同步"我在哪个组"再画选择器（合并后旧快照不会自动更新）
             }
         }
         // 组件同理：同一组只显示当前选中的那个

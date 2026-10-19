@@ -117,6 +117,15 @@ public sealed class Repository
         MarginY = r.GetDouble(10), Width = r.GetDouble(11), Height = r.GetDouble(12), IsVisible = r.GetInt32(13) != 0
     });
 
+    /// <summary>
+    /// 清空盒子与盒子组。**只给截图模式用**（隔离数据目录），保证每次出图都是同一套演示数据；
+    /// 用户真实数据目录永不走这里。不动 boxes 目录里的文件。
+    /// </summary>
+    public void ClearBoxesAndGroups()
+    {
+        _db.Exec("DELETE FROM boxes");
+        _db.Exec("DELETE FROM box_groups");
+    }
     public void DeleteGroup(string id) => _db.Exec("DELETE FROM box_groups WHERE id=$id", ("$id", id));
 
     // ---------- Widgets ----------

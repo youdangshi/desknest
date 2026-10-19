@@ -49,8 +49,14 @@ internal static class PageShotter
 
         // 没有盒子时造一个演示盒子（只写隔离数据目录，绝不碰用户真实数据），
         // 否则桌面层截图是一张空壁纸，根本看不出盒子外观有没有改对。
-        if (AppServices.Repo.Boxes().Count == 0)
         {
+            // 演示数据要幂等：隔离目录可能被上次截图跑过、已经有一个盒子。
+            // 注意：这里**不能**再包一层 "盒子数为 0" 的判断 —— 上次就是因为那层判断，
+            // 目录里残留 1 个盒子时整段被跳过，桌面层截图里永远看不到组选择器。
+            // 这里保证「至少 2 个盒子 + 1 个 2 人组」，否则桌面层截图里看不到组选择器。
+            // 每次出图都从同一套演示数据开始：上一次跑留下的盒子/组会让截图不可复现
+            // （曾经出现"组里剩一个成员在别的盒子名下活动"，选择器画到了错误的窗口上）。
+            AppServices.Repo.ClearBoxesAndGroups();
             var demo = new Core.BoxRecord { Name = "工作", Width = 320, Height = 372, MarginX = 120, MarginY = 120 };
             AppServices.Repo.Upsert(demo);
             // 再建一个并合并成组：这样桌面层截图里能看到「2/2 ▾」成员选择器，
@@ -59,14 +65,20 @@ internal static class PageShotter
             AppServices.Repo.Upsert(second);
             try
             {
-                AppServices.Boxes.MergeInto(demo, second);
-                Log.Info("截图模式：已创建演示盒子 + 合并成组（2 个成员）");
+                if (AppServices.Repo.Groups().Count == 0)
+                {
+                    AppServices.Boxes.MergeInto(demo, second);
+                    Log.Info($"截图模式：已把「{demo.Name}」「{second.Name}」合并成演示组（2 个成员）");
+                }
             }
             catch (Exception ex)
             {
                 Log.Warn("截图模式：演示组创建失败（继续截图）：" + ex.Message);
             }
-            app.Desktop.RestoreAll();
+            // 用 ReloadBoxes 而不是 RestoreAll：ReloadBoxes 会按"组内只留活动成员"收起可见性，
+            // 并给每个盒子重画成员选择器。上一次正是因为用了 RestoreAll，
+            // 组里两个盒子同时露在桌面上、且非活动那个没有选择器（截图里一眼就看出来了）。
+            app.Desktop.ReloadBoxes();
         }
 
         var index = 0;
