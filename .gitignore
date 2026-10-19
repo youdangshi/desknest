@@ -24,3 +24,9 @@ _ref/
 
 # DeskBox 文件树缓存（脚本可重生成）
 tools/deskbox-tree.json
+
+# WinUI 迁移：本地包缓存与探针
+.nuget-winui/
+.nuget-spike/
+.dotnet-home/
+spike-nuget.mjs
