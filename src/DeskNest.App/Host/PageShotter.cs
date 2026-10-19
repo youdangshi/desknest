@@ -53,8 +53,20 @@ internal static class PageShotter
         {
             var demo = new Core.BoxRecord { Name = "工作", Width = 320, Height = 372, MarginX = 120, MarginY = 120 };
             AppServices.Repo.Upsert(demo);
+            // 再建一个并合并成组：这样桌面层截图里能看到「2/2 ▾」成员选择器，
+            // 组导航改样式（标签条 → 单选择器）时靠这张图验收，不用手工搭两个盒子。
+            var second = new Core.BoxRecord { Name = "学习", Width = 320, Height = 372, MarginX = 120, MarginY = 120 };
+            AppServices.Repo.Upsert(second);
+            try
+            {
+                AppServices.Boxes.MergeInto(demo, second);
+                Log.Info("截图模式：已创建演示盒子 + 合并成组（2 个成员）");
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("截图模式：演示组创建失败（继续截图）：" + ex.Message);
+            }
             app.Desktop.RestoreAll();
-            Log.Info("截图模式：已创建演示盒子（隔离数据目录）");
         }
 
         var index = 0;

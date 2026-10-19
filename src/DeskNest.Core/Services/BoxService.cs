@@ -165,6 +165,57 @@ public sealed class BoxService
     /// 与「删除盒子（逐个还原到原位置）」的区别：这个的结果只有一个——桌面，
     /// 用户不用去想"它当初是从哪来的"。
     /// </summary>
+    /// <summary>
+    /// 把盒子从组里移出（组成员 1 个时组记录直接消失）。对应 DeskBox 的「移出」，
+    /// 与「解散组」不同：解散是整组没了、文件全回桌面；移出只摘掉这一个成员，其它成员照旧成组。
+    /// </summary>
+    public BoxGroupRecord? LeaveGroup(BoxRecord box)
+    {
+        if (box.GroupId is null) return null;
+        var group = _repo.Groups().FirstOrDefault(g => g.Id == box.GroupId);
+        box.GroupId = null;
+        _repo.Upsert(box);
+        if (group is null) return null;
+
+        var members = group.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
+        members.Remove(box.Id);
+        if (members.Count <= 1)
+        {
+            // 只剩一个成员：组没意义了，把剩下那个也放出来，删掉组记录
+            foreach (var leftId in members)
+            {
+                var left = _repo.Box(leftId);
+                if (left is null) continue;
+                left.GroupId = null;
+                _repo.Upsert(left);
+            }
+            _repo.DeleteGroup(group.Id);
+            Log.Info($"组「{group.Name}」只剩 1 个成员，已撤销组记录");
+            return null;
+        }
+
+        group.MemberIds = string.Join(";", members);
+        if (group.ActiveMemberId == box.Id) group.ActiveMemberId = members[0];
+        _repo.Upsert(group);
+        Log.Info($"已把「{box.Name}」从组「{group.Name}」移出（剩 {members.Count} 个成员）");
+        return group;
+    }
+
+    /// <summary>组内排序：把某个成员往前/往后挪一位。返回是否真的动了。</summary>
+    public bool MoveMember(BoxRecord box, int direction)
+    {
+        if (box.GroupId is null) return false;
+        var group = _repo.Groups().FirstOrDefault(g => g.Id == box.GroupId);
+        if (group is null) return false;
+        var members = group.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
+        var idx = members.IndexOf(box.Id);
+        var target = idx + Math.Sign(direction);
+        if (idx < 0 || target < 0 || target >= members.Count) return false;
+        (members[idx], members[target]) = (members[target], members[idx]);
+        group.MemberIds = string.Join(";", members);
+        _repo.Upsert(group);
+        return true;
+    }
     public DeleteResult DissolveToDesktop(BoxRecord box, string? desktopOverride = null)
     {
         var desktop = desktopOverride ?? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);

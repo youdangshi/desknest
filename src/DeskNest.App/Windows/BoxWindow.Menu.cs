@@ -489,6 +489,11 @@ public sealed partial class BoxWindow
         }
     }
 
+    /// <summary>
+    /// 组标题栏的「成员选择器」：**一个**按钮显示 `2/4 ▾`，点开是成员列表 + 管理分区。
+    /// 规范来自 DeskBox（见 docs/26 §1）：不额外加标签条，切换不改窗口位置/尺寸/句柄。
+    /// 以前这里是"每个成员一个页签"，成员一多就挤掉标题、还得做溢出菜单 —— 已废。
+    /// </summary>
     public void RefreshGroupTabsPublic()
     {
         _tabStrip.Children.Clear();
@@ -496,34 +501,124 @@ public sealed partial class BoxWindow
         var group = AppServices.Repo.Groups().FirstOrDefault(g => g.Id == _box.GroupId);
         if (group is null) return;
 
-        var members = group.MemberIds.Split(';', StringSplitOptions.RemoveEmptyEntries)
-            .Select(AppServices.Repo.Box).Where(b => b is not null).Select(b => b!).ToList();
-        if (members.Count <= 1) return;
+        var entries = Ui.GroupSelector.Build(group.MemberIds, _box.Id, id => AppServices.Repo.Box(id)?.Name);
+        if (!Ui.GroupSelector.ShouldShow(entries)) return;   // 只剩一个成员时不显示（没有可切的）
 
-        foreach (var m in members)
+        var chip = new Button
         {
-            var active = m.Id == _box.Id;
-            // 页签：文字 + 2px 强调色下划线（不用蓝色药丸，和 DeskBox 的标签栏观感一致）
-            var tab = new Button
+            Content = Ui.GroupSelector.Counter(entries, _box.Id) + " ▾",
+            FontSize = 11.5,
+            Padding = new Thickness(6, 1, 6, 1),
+            Margin = new Thickness(4, 2, 2, 2),
+            Background = Brushes.Transparent,
+            Foreground = Theme.Desktop.SecondaryBrush,
+            BorderThickness = new Thickness(0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = Cursors.Hand,
+            ToolTip = $"本组共 {entries.Count} 个盒子：点这里选择要显示的那个（也可以 Ctrl+Tab 切换）"
+        };
+        chip.Style = ControlStyles.NavButtonStyle();
+        var hover = new SolidColorBrush(Theme.Desktop.Foreground) { Opacity = 0.10 };
+        chip.MouseEnter += (_, _) => chip.Background = hover;
+        chip.MouseLeave += (_, _) => chip.Background = Brushes.Transparent;
+        chip.Click += (_, e) =>
+        {
+            e.Handled = true;          // 别让标题栏把这下当成"开始拖动窗口"
+            OpenGroupSelectorMenu(chip, entries);
+        };
+        _tabStrip.Children.Add(chip);
+    }
+
+    /// <summary>成员选择器点开后的小菜单：上面选成员，下面独立一区做管理（排序/移出/解散）。</summary>
+    private void OpenGroupSelectorMenu(UIElement target, IReadOnlyList<Ui.GroupSelectorEntry> entries)
+    {
+        var menu = new System.Windows.Controls.ContextMenu
+        {
+            PlacementTarget = target,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom
+        };
+
+        foreach (var entry in entries)
+        {
+            var memberId = entry.BoxId;
+            var item = new MenuItem
             {
-                Content = group.TitleDisplay == "Icon" ? "▦" : m.Name,
-                FontSize = 12,
-                Padding = new Thickness(8, 3, 8, 3),
-                Margin = new Thickness(1, 1, 1, 0),
-                Background = Brushes.Transparent,
-                Foreground = active ? Theme.Desktop.ForegroundBrush : Theme.Desktop.SecondaryBrush,
-                BorderThickness = new Thickness(0, 0, 0, 2),
-                BorderBrush = active ? Theme.Desktop.AccentBrush : Brushes.Transparent,
-                Cursor = Cursors.Hand
+                Header = (entry.IsActive ? "✓  " : "     ") + entry.Name,
+                IsEnabled = !entry.IsActive,
+                FontWeight = entry.IsActive ? FontWeights.SemiBold : FontWeights.Normal
             };
-            tab.Style = ControlStyles.NavButtonStyle();
-            tab.Click += (_, e) =>
-            {
-                SwitchToMember(m.Id);
-                e.Handled = true;
-            };
-            _tabStrip.Children.Add(tab);
+            item.Click += (_, _) => SwitchToMember(memberId);
+            menu.Items.Add(item);
         }
+
+        // 管理分区：与"选成员"分开，避免误点把组拆了（DeskBox 规范 R2.2 第 6 条）
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("在组内上移一位", () =>
+        {
+            if (AppServices.Boxes.MoveMember(_box, -1)) ReloadGroupsAfterChange();
+            else Ui.Notifications.Toast("已经是第一个了", 3);
+        }));
+        menu.Items.Add(Item("在组内下移一位", () =>
+        {
+            if (AppServices.Boxes.MoveMember(_box, 1)) ReloadGroupsAfterChange();
+            else Ui.Notifications.Toast("已经是最后一个了", 3);
+        }));
+        menu.Items.Add(Item("从这个组移出（盒子与文件都保留）", LeaveCurrentGroup));
+        menu.Items.Add(Item("解散整个组（各盒子独立保留）", DissolveGroupOnly));
+        menu.IsOpen = true;
+    }
+
+    /// <summary>从组移出：只摘掉自己，其它成员照旧成组；组只剩 1 个时组记录自动撤销。</summary>
+    private void LeaveCurrentGroup()
+    {
+        try
+        {
+            AppServices.Boxes.LeaveGroup(_box);
+            _box.GroupId = null;
+            Log.Info($"盒子「{_box.Name}」已从组移出");
+            ReloadGroupsAfterChange();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"从组移出失败：{ex}");
+            Ui.Notifications.Toast("移出失败：" + ex.Message, 6);
+        }
+    }
+
+    /// <summary>解散整个组但**不删盒子**：成员各自独立存在，文件不动。</summary>
+    private void DissolveGroupOnly()
+    {
+        if (_box.GroupId is null) return;
+        try
+        {
+            var groupId = _box.GroupId;
+            var group = AppServices.Repo.Groups().FirstOrDefault(g => g.Id == groupId);
+            var ids = (group?.MemberIds ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var id in ids)
+            {
+                var member = AppServices.Repo.Box(id);
+                if (member is null) continue;
+                member.GroupId = null;
+                AppServices.Repo.Upsert(member);
+            }
+            AppServices.Repo.DeleteGroup(groupId);
+            _box.GroupId = null;
+            Log.Info($"组「{group?.Name ?? groupId}」已解散（盒子保留）");
+            ReloadGroupsAfterChange();
+            Ui.Notifications.Toast("组已解散，各个盒子都还在", 4);
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"解散组失败：{ex}");
+            Ui.Notifications.Toast("解散失败：" + ex.Message, 6);
+        }
+    }
+
+    /// <summary>组结构变了以后，让桌面层重排可见性并把各盒子的选择器重画一遍。</summary>
+    private void ReloadGroupsAfterChange()
+    {
+        if (App.Current is App app) app.Desktop.ReloadBoxes();
+        RefreshGroupTabsPublic();
     }
 
     private void SwitchGroup(int direction)

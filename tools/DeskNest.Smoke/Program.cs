@@ -1,4 +1,4 @@
-﻿using DeskNest.Core;
+using DeskNest.Core;
 using DeskNest.Core.Data;
 using DeskNest.Core.Services;
 
@@ -271,6 +271,54 @@ Check("改别的字段不会把卡片颜色弄丢", () => repo.Box(colored.Id)!.
 
 try { Directory.Delete(root, true); } catch { }
 
+
+Console.WriteLine("== 组导航：单选择器 + 移出/排序（DeskBox 规范，docs/26 §1） ==");
+// 规范要点：组里只有 1 个成员时不显示选择器；条目顺序 = 组成员顺序；当前成员只有一个勾。
+var gsIds = "a;b;c";
+var gsEntries = DeskNest.App.Ui.GroupSelector.Build(gsIds, "b", id => id switch { "a" => "工作", "b" => "学习", "c" => null });
+Check("成员记录缺失时跳过而不占位（c 没有名字 → 只剩 2 项）", () => gsEntries.Count == 2);
+Check("条目顺序跟组成员顺序一致", () => gsEntries[0].BoxId == "a" && gsEntries[1].BoxId == "b");
+Check("只有当前成员带 active 标记", () => gsEntries.Count(e => e.IsActive) == 1 && gsEntries[1].IsActive);
+Check("计数显示 2/2（跳过缺失成员后）", () => DeskNest.App.Ui.GroupSelector.Counter(gsEntries, "b") == "2/2");
+Check("当前成员不在列表里时给 –/N，不假装是第一个",
+    () => DeskNest.App.Ui.GroupSelector.Counter(gsEntries, "zzz") == "–/2");
+Check("只剩 1 个成员时不显示选择器", () => !DeskNest.App.Ui.GroupSelector.ShouldShow(
+    DeskNest.App.Ui.GroupSelector.Build("a", "a", _ => "工作")));
+Check("Ctrl+Tab 到最后一项后回到第一项（循环）",
+    () => DeskNest.App.Ui.GroupSelector.Step(gsEntries, "b", 1) == "a"
+       && DeskNest.App.Ui.GroupSelector.Step(gsEntries, "a", -1) == "b");
+
+// 移出：只摘掉自己、组还在；组只剩 1 个成员时组记录自动撤销
+var lgGroup = new BoxGroupRecord { Name = "移出测试组", MemberIds = "", ActiveMemberId = "" };
+var lgA = new BoxRecord { Name = "甲", GroupId = lgGroup.Id, Width = 300, Height = 320 };
+var lgB = new BoxRecord { Name = "乙", GroupId = lgGroup.Id };
+var lgC = new BoxRecord { Name = "丙", GroupId = lgGroup.Id };
+repo.Upsert(lgA); repo.Upsert(lgB); repo.Upsert(lgC);
+lgGroup.MemberIds = lgA.Id + ";" + lgB.Id + ";" + lgC.Id; lgGroup.ActiveMemberId = lgA.Id;
+repo.Upsert(lgGroup);
+var lgLeft = boxes.LeaveGroup(lgA);
+Check("移出后自己不再属于组", () => repo.Box(lgA.Id)!.GroupId is null);
+Check("组里还有 2 个成员，组记录保留且成员数变 2", () => lgLeft is not null
+    && repo.Groups().First(g => g.Id == lgGroup.Id).MemberIds.Split(';').Length == 2);
+Check("当前成员被移出后，活动成员自动落到第一个", () =>
+    repo.Groups().First(g => g.Id == lgGroup.Id).ActiveMemberId == lgB.Id);
+var lgLeft2 = boxes.LeaveGroup(lgB);
+Check("只剩 2 个成员时再移出一个，组记录被撤销", () => lgLeft2 is null && !repo.Groups().Any(g => g.Id == lgGroup.Id));
+Check("剩下那个盒子也脱离了组（不留悬空 group_id）", () => repo.Box(lgC.Id)!.GroupId is null);
+
+// 组内排序：上移/下移换位，边界不动
+var mvGroup = new BoxGroupRecord { Name = "排序组", MemberIds = "", ActiveMemberId = "" };
+var mv1 = new BoxRecord { Name = "一", GroupId = mvGroup.Id };
+var mv2 = new BoxRecord { Name = "二", GroupId = mvGroup.Id };
+repo.Upsert(mv1); repo.Upsert(mv2);
+mvGroup.MemberIds = mv1.Id + ";" + mv2.Id; mvGroup.ActiveMemberId = mv1.Id;
+repo.Upsert(mvGroup);
+Check("下移把「一」换到后面", () => boxes.MoveMember(mv1, 1)
+    && repo.Groups().First(g => g.Id == mvGroup.Id).MemberIds == mv2.Id + ";" + mv1.Id);
+Check("已经是最后一个再下移不动", () => !boxes.MoveMember(mv1, 1));
+Check("上移把它换回最前", () => boxes.MoveMember(mv1, -1)
+    && repo.Groups().First(g => g.Id == mvGroup.Id).MemberIds == mv1.Id + ";" + mv2.Id);
+Check("已经是第一个再上移不动", () => !boxes.MoveMember(mv1, -1));
 Console.WriteLine();
 Console.WriteLine($"通过 {passed} 项，失败 {failures.Count} 项");
 foreach (var f in failures) Console.WriteLine("  失败：" + f);
