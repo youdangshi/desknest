@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
@@ -10,6 +10,11 @@
     <SelfContained>false</SelfContained>
     <EnableMsixTooling>false</EnableMsixTooling>
     <EnableDefaultXamlItems>false</EnableDefaultXamlItems>
+    <!-- unpackaged 应用不需要 resources.pri；而 MakePri.exe 在中文路径/受限环境下会以 0x80070005 退出 -->
+    <MicrosoftProjectPriGenerationEnable>false</MicrosoftProjectPriGenerationEnable>
+    <EnablePriGenTooling>false</EnablePriGenTooling>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
     <StartupObject>Spike</StartupObject>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>

@@ -33,3 +33,5 @@ spike-nuget.mjs
 
 spike-nuget2.mjs
 spike-winui/spike.log
+
+_spike-*.log

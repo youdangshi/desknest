@@ -1,23 +1,25 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 set "EXE=%~dp0spike-winui\bin\Debug\net10.0-windows10.0.19041.0\win-x64\Spike.exe"
-set "LOGDIR=%~dp0spike-winui\bin\Debug\net10.0-windows10.0.19041.0\win-x64"
-set "LOG=%LOGDIR%\spike.log"
-echo ==== P0 spike: 3 hosting modes ====
-echo EXE=%EXE%
+set "DIR=%~dp0spike-winui\bin\Debug\net10.0-windows10.0.19041.0\win-x64"
+echo ==== P0 spike: 3 modes, 12s each ====
 if not exist "%EXE%" (echo [FAILED] exe not found & pause & exit /b 1)
-if exist "%LOGDIR%\spike.log" del "%LOGDIR%\spike.log"
+if exist "%~dp0_spike-*.log" del "%~dp0_spike-*.log"
 for %%M in (owner workerw bottom) do (
   echo.
-  echo ---- mode: %%M ----
+  echo ---- %%M ---- (now: click the button a few times if you can)
+  if exist "%DIR%\spike.log" del "%DIR%\spike.log"
   start "" "%EXE%" %%M
-  echo (12 seconds: look at the window, try clicking the button)
   timeout /t 12 /nobreak >nul
   taskkill /f /im Spike.exe >nul 2>nul
-  echo ---- log after %%M ----
-  if exist "%LOG%" (type "%LOG%") else (echo [no log - app exited before writing])
-  if exist "%LOG%" del "%LOG%"
+  if exist "%DIR%\spike.log" (
+    copy /y "%DIR%\spike.log" "%~dp0_spike-%%M.log" >nul
+    echo ---- log %%M ----
+    type "%~dp0_spike-%%M.log"
+  ) else (
+    echo [no log] %%M: app exited before writing
+  )
 )
 echo.
-echo ==== done ====
+echo ==== done. logs saved as _spike-*.log in the project folder ====
 pause
