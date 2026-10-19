@@ -75,3 +75,48 @@
 - [x] 决策与文档（本文）
 - [ ] **P0 spike**：`spike-winui/Spike.csproj` 已建；等首次 NuGet 还原（`restore-winui.cmd`）完成后验证"贴桌面层"
 - [ ] P1 壳（未开始）
+
+---
+
+## 10. P0 结果（2026-10-19 22:17）：**失败，建议停止迁移**
+
+三次在真实桌面环境（非沙箱）运行的日志，内容都只有一行：
+
+```
+=== spike start mode=owner ===
+=== spike start mode=workerw ===
+=== spike start mode=bottom ===
+```
+
+`Main` 进去了、日志写了，随后在 `Application.Start()` 里崩掉 —— 窗口从未出现，也没有 `CLICK` 记录。
+
+我这边（沙箱）跑同一份 exe 得到更明确的栈：
+
+```
+Fatal error. 0xC0000005
+at WinRT.Interop.Platform.RoGetActivationFactory(...)
+at Microsoft.UI.Xaml.Application.get__objRef_global__Microsoft_UI_Xaml_IApplicationStatics()
+```
+
+即 **WinUI 3 的 XAML 运行时激活失败**：`RoGetActivationFactory("Microsoft.UI.Xaml.Application")` 拿不到激活工厂。已排除的原因：
+
+| 怀疑点 | 结果 |
+| --- | --- |
+| 缺 Windows App Runtime | 已改 self-contained（自带 6 个 WindowsAppRuntime dll、508 文件、214MB），仍然失败 |
+| MakePri / resources.pri | 已用命令行 `-p:MicrosoftProjectPriGenerationEnable=false` 彻底关掉，干净重建 0 错误 |
+| 代码/托管入口 | 日志证明 `Main` 已执行，问题在这之后 |
+| 三种宿主方案 | 三种都到不了调用宿主代码那一步（崩在窗口创建前） |
+
+剩下未验证的方向（都不便宜）：打包成 MSIX 并安装（需要证书 + 安装步骤）、undocked RegFree WinRT 的 manifest 定制、换 Windows App SDK 版本重试。
+
+### 结论
+
+以「每晚 1–2 小时」的节奏，继续赌环境的收益比已经很低：**连"最小 WinUI 3 窗口"都起不来，谈不上贴桌面层**。按预定的判断标准，P0 判失败。
+
+### 替代路线（按性价比排序）
+
+| 路线 | 做什么 | 成本 | 我的自查能力 |
+| --- | --- | --- | --- |
+| **B. WPF 界面层重写**（推荐） | 保留 Core/Native/Smoke，把 `Ui/` 与 `Pages/` 按「令牌 + 组件库」重写一遍，观感对齐 WinUI 3 Fluent（WPF-UI 本来就是 WinUI 的 WPF 移植） | 1–2 周 | **完整**：出图 + 逐像素量对比度，不需要用户参与 |
+| C. Avalonia 重写 | 换跨平台框架，窗口同样是 HWND，现有 Win32 宿主层可复用 | 2–3 周 | 部分（沙箱内可编译，运行仍需用户） |
+| D. 继续 WinUI 3 | 打 MSIX、调 manifest、试不同 SDK 版本 | 未知（≥3 轮用户参与） | 几乎为零 |
