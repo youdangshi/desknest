@@ -21,3 +21,6 @@ shot-dark.cmd
 
 # DeskBox 参考源码（GPL-3.0，仅本地对照，不随仓库分发）
 _ref/
+
+# DeskBox 文件树缓存（脚本可重生成）
+tools/deskbox-tree.json
