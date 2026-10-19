@@ -27,7 +27,7 @@ internal static class Spike
             WinRT.ComWrappersSupport.InitializeComWrappers();
             Application.Start(_ =>
             {
-                var context = new DispatcherQueueSynchronizationContext(
+                var context = new Microsoft.UI.Dispatching.DispatcherQueueSynchronizationContext(
                     Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
                 System.Threading.SynchronizationContext.SetSynchronizationContext(context);
                 new App();
