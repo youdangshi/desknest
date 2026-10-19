@@ -120,3 +120,16 @@ at Microsoft.UI.Xaml.Application.get__objRef_global__Microsoft_UI_Xaml_IApplicat
 | **B. WPF 界面层重写**（推荐） | 保留 Core/Native/Smoke，把 `Ui/` 与 `Pages/` 按「令牌 + 组件库」重写一遍，观感对齐 WinUI 3 Fluent（WPF-UI 本来就是 WinUI 的 WPF 移植） | 1–2 周 | **完整**：出图 + 逐像素量对比度，不需要用户参与 |
 | C. Avalonia 重写 | 换跨平台框架，窗口同样是 HWND，现有 Win32 宿主层可复用 | 2–3 周 | 部分（沙箱内可编译，运行仍需用户） |
 | D. 继续 WinUI 3 | 打 MSIX、调 manifest、试不同 SDK 版本 | 未知（≥3 轮用户参与） | 几乎为零 |
+
+### 10.1 补记（22:35）：给 exe 加 assemblyIdentity 后，连日志都不写了
+
+- 无 assemblyIdentity：`Main` 能进（日志 1 行），崩在 `Application.Start()` → `0xC0000005`（reg-free WinRT 清单被整份忽略）。
+- 补 assemblyIdentity 后：进程**在 Main 之前就退出**，连第一行日志都没有 —— 说明新增清单让 SxS 装载失败，比之前更早死。
+
+两个方向都堵住，说明这不是"再调一个属性"能解决的事，而是**这条工具链在本机（中文路径 / 受限环境）没有可用组合**。另有一个未验证但成本极低的假设：`MakePri.exe` 的 `0x80070005` 可能来自**非 ASCII 路径**（Windows SDK 工具在某些版本对中文路径处理有缺陷）。验证方式是把探针工程放到纯 ASCII 路径（如 `C:\DeskNestWinUI`）再编译一次。
+
+### 10.2 建议（22:35 之后）
+
+1. 今晚**停止** WinUI 折腾，把精力放回可用产品；
+2. 明天若要继续 C 路线，先做那个 ASCII 路径验证（一次性，纯编译，不需要运行）；
+3. 若只是想"界面像 WinUI"，A 路线（WPF 界面层重写）在观感上等价、成本可控、且我全程能自查。
