@@ -30,3 +30,6 @@ tools/deskbox-tree.json
 .nuget-spike/
 .dotnet-home/
 spike-nuget.mjs
+
+spike-nuget2.mjs
+spike-winui/spike.log
