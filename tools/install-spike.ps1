@@ -1,24 +1,52 @@
-# Import our dev certificate (current user) and install the spike package.
+# Install the WinUI 3 spike package.
+# Path 1: developer mode on  -> install the UNSIGNED package (no cert needed).
+# Path 2: developer mode off -> trust our cert in LocalMachine\TrustedPeople (UAC) then install signed.
+$ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $PSScriptRoot
-$cer  = Join-Path $here "dist\spike\DeskNestDev.cer"
-$msix = Join-Path $here "dist\spike\DeskNestSpike.msix"
-if (-not (Test-Path $msix)) { throw "msix not found: $msix" }
+$spike = Join-Path $here "dist\spike"
+$signedMsix   = Join-Path $spike "DeskNestSpike.msix"
+$unsignedMsix = Join-Path $spike "DeskNestSpike-unsigned.msix"
+$cer = Join-Path $spike "DeskNestDev.cer"
 
-$c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $cer
-$store = New-Object System.Security.Cryptography.X509Certificates.X509Store "TrustedPeople", "CurrentUser"
-$store.Open("ReadWrite")
-if (-not ($store.Certificates | Where-Object { $_.Thumbprint -eq $c.Thumbprint })) {
-  $store.Add($c)
-  Write-Host ("certificate trusted: " + $c.Thumbprint) -ForegroundColor Green
+$devKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+$devMode = $false
+if (Test-Path $devKey) {
+  $v = (Get-ItemProperty $devKey -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense
+  if ($v -eq 1) { $devMode = $true }
 }
-$store.Close()
 
-$existing = Get-AppxPackage -Name "DeskNest.Spike"
-if ($existing) { Remove-AppxPackage $existing.PackageFullName }
+function Remove-Old {
+  $e = Get-AppxPackage -Name "DeskNest.Spike"
+  if ($e) { Remove-AppxPackage $e.PackageFullName }
+}
 
-Add-AppxPackage -Path $msix
+if ($devMode) {
+  Write-Host "developer mode: ON -> installing unsigned package" -ForegroundColor Cyan
+  if (-not (Test-Path $unsignedMsix)) { throw "missing $unsignedMsix" }
+  Remove-Old
+  Add-AppxPackage -Path $unsignedMsix -AllowUnsigned
+} else {
+  Write-Host "developer mode: OFF -> trusting the cert needs admin (UAC prompt follows)" -ForegroundColor Cyan
+  if (-not (Test-Path $cer)) { throw "missing $cer" }
+  # trust for the machine (admin) - appx signature validation wants LocalMachine store
+  $script = @"
+`$c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 '$cer'
+`$s = New-Object System.Security.Cryptography.X509Certificates.X509Store 'TrustedPeople','LocalMachine'
+`$s.Open('ReadWrite')
+if (-not (`$s.Certificates | Where-Object { `$_.Thumbprint -eq `$c.Thumbprint })) { `$s.Add(`$c) }
+`$s.Close()
+"@
+  $tmp = Join-Path $env:TEMP "trust-desknest-cert.ps1"
+  Set-Content -Path $tmp -Value $script -Encoding ASCII
+  $p = Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$tmp`"" -Verb RunAs -Wait -PassThru
+  if ($p.ExitCode -ne 0) { throw "certificate trust failed (UAC cancelled?)" }
+  Write-Host "certificate trusted for the machine" -ForegroundColor Green
+  Remove-Old
+  Add-AppxPackage -Path $signedMsix
+}
+
 $pkg = Get-AppxPackage -Name "DeskNest.Spike"
-if (-not $pkg) { throw "install failed" }
+if (-not $pkg) { throw "package not registered" }
 Write-Host ("installed: " + $pkg.PackageFullName) -ForegroundColor Green
 Start-Process ("shell:AppsFolder\$($pkg.PackageFamilyName)!App")
-Write-Host "launched - a white window should appear." -ForegroundColor Green
+Write-Host "launched - a white window should appear now." -ForegroundColor Green
