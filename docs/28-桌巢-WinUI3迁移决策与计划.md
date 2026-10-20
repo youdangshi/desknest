@@ -145,3 +145,27 @@ at Microsoft.UI.Xaml.Application.get__objRef_global__Microsoft_UI_Xaml_IApplicat
 ### 10.4 路线决定（2026-10-20）
 
 改走 **A：不换框架、重写界面层**，方案见 `docs/29-桌巢-界面层重写方案.md`。WinUI 3 迁移暂停，保留全部证据与探针工程。
+
+### 10.5 P0 结果（2026-10-20 19:52）：**通过，`owner` 方案可用**
+
+关键突破：**装成 MSIX 包（开发者模式松散注册）后 WinUI 3 一次起来**，此前所有崩溃都是「免安装 exe 的 SxS/清单」路线问题，不是 WinUI 本身。
+
+探针日志（三种方案逐个点）：
+
+```
+HWND=0x221058
+[启动时]  owner=0x0     parent=0x0      exstyle=0x100          toolwindow=False
+[owner]   owner=0x10232 parent=0x0      exstyle=0x180          toolwindow=True     ← owner 关系建立，窗口仍可点
+[workerw] SetParent -> 65552(旧父窗口)，但随后 parent=0x0，窗口变小    ← 不稳定
+[bottom]  owner=0x10232 parent=0x0      exstyle=0x8000180      toolwindow=True noactivate=True  ← 沉底后看不见
+```
+
+用户现场观察与日志一致：
+
+| 方案 | 现象 | 结论 |
+| --- | --- | --- |
+| `owner` | 窗口仍在、**还能点** | ✅ 可用（与 WPF 版同一思路：把壁纸窗口设为 owner） |
+| `workerw` | 窗口**变小**（子窗口坐标被重算） | ⚠️ 可用但需自己做坐标换算，暂不采用 |
+| `bottom` | 窗口**看不见**（沉到壁纸后面） | ❌ 不可用 |
+
+**P0 判通过**，进入 P1（WinUI 壳）。宿主策略定为 **owner + WS_EX_TOOLWINDOW**。

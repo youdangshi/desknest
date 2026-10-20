@@ -23,16 +23,20 @@ function Remove-Old {
 if ($devMode) {
   Write-Host "developer mode: ON -> registering unpacked app (no signature needed)" -ForegroundColor Cyan
   if (-not (Test-Path $unsignedMsix)) { throw "missing $unsignedMsix" }
-  $layout = Join-Path $env:LOCALAPPDATA "DeskNestSpikeLayout"
-  if (Test-Path $layout) { Remove-Item $layout -Recurse -Force }
-  New-Item -ItemType Directory -Path $layout | Out-Null
+  # ????????? app ???????????????????
+  Remove-Old
+  $layout = Join-Path $env:LOCALAPPDATA ("DeskNestSpikeLayout_" + (Get-Date -Format "HHmmss"))
+  New-Item -ItemType Directory -Path $layout -Force | Out-Null
+  # ????????????????????????
+  Get-ChildItem $env:LOCALAPPDATA -Directory -Filter "DeskNestSpikeLayout*" -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -ne $layout } |
+    ForEach-Object { try { Remove-Item $_.FullName -Recurse -Force -ErrorAction Stop } catch { } }
   $zip = Join-Path $layout "pkg.zip"
   Copy-Item $unsignedMsix $zip -Force
   Expand-Archive -Path $zip -DestinationPath $layout -Force
   Remove-Item $zip -Force
   $manifest = Join-Path $layout "AppxManifest.xml"
   if (-not (Test-Path $manifest)) { throw "AppxManifest.xml not found after expand" }
-  Remove-Old
   Add-AppxPackage -Register $manifest
 } else {
   Write-Host "developer mode: OFF -> trusting the cert needs admin (UAC prompt follows)" -ForegroundColor Cyan
