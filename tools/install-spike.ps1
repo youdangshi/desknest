@@ -1,6 +1,6 @@
 # Install the WinUI 3 spike package.
-# Path 1: developer mode on  -> install the UNSIGNED package (no cert needed).
-# Path 2: developer mode off -> trust our cert in LocalMachine\TrustedPeople (UAC) then install signed.
+# Path 1 (developer mode ON): register the app from its loose files - no certificate needed.
+# Path 2 (OFF): trust our cert in LocalMachine\TrustedPeople (UAC) then install the signed package.
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $PSScriptRoot
 $spike = Join-Path $here "dist\spike"
@@ -21,14 +21,22 @@ function Remove-Old {
 }
 
 if ($devMode) {
-  Write-Host "developer mode: ON -> installing unsigned package" -ForegroundColor Cyan
+  Write-Host "developer mode: ON -> registering unpacked app (no signature needed)" -ForegroundColor Cyan
   if (-not (Test-Path $unsignedMsix)) { throw "missing $unsignedMsix" }
+  $layout = Join-Path $env:LOCALAPPDATA "DeskNestSpikeLayout"
+  if (Test-Path $layout) { Remove-Item $layout -Recurse -Force }
+  New-Item -ItemType Directory -Path $layout | Out-Null
+  $zip = Join-Path $layout "pkg.zip"
+  Copy-Item $unsignedMsix $zip -Force
+  Expand-Archive -Path $zip -DestinationPath $layout -Force
+  Remove-Item $zip -Force
+  $manifest = Join-Path $layout "AppxManifest.xml"
+  if (-not (Test-Path $manifest)) { throw "AppxManifest.xml not found after expand" }
   Remove-Old
-  Add-AppxPackage -Path $unsignedMsix -AllowUnsigned
+  Add-AppxPackage -Register $manifest
 } else {
   Write-Host "developer mode: OFF -> trusting the cert needs admin (UAC prompt follows)" -ForegroundColor Cyan
   if (-not (Test-Path $cer)) { throw "missing $cer" }
-  # trust for the machine (admin) - appx signature validation wants LocalMachine store
   $script = @"
 `$c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 '$cer'
 `$s = New-Object System.Security.Cryptography.X509Certificates.X509Store 'TrustedPeople','LocalMachine'
@@ -40,7 +48,6 @@ if (-not (`$s.Certificates | Where-Object { `$_.Thumbprint -eq `$c.Thumbprint })
   Set-Content -Path $tmp -Value $script -Encoding ASCII
   $p = Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$tmp`"" -Verb RunAs -Wait -PassThru
   if ($p.ExitCode -ne 0) { throw "certificate trust failed (UAC cancelled?)" }
-  Write-Host "certificate trusted for the machine" -ForegroundColor Green
   Remove-Old
   Add-AppxPackage -Path $signedMsix
 }
