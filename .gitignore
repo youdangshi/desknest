@@ -44,3 +44,7 @@ _msix/*.cer
 _msix/Assets/
 
 dist/spike/
+
+_msix/fulltest/
+_msix/mini/
+_msix/*.msix
