@@ -42,3 +42,5 @@ _msix/*.msix
 _msix/*.pfx
 _msix/*.cer
 _msix/Assets/
+
+dist/spike/
