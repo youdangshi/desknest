@@ -35,3 +35,10 @@ spike-nuget2.mjs
 spike-winui/spike.log
 
 _spike-*.log
+
+# MSIX 打包中间产物
+_msix/layout/
+_msix/*.msix
+_msix/*.pfx
+_msix/*.cer
+_msix/Assets/
