@@ -133,3 +133,15 @@ at Microsoft.UI.Xaml.Application.get__objRef_global__Microsoft_UI_Xaml_IApplicat
 1. 今晚**停止** WinUI 折腾，把精力放回可用产品；
 2. 明天若要继续 C 路线，先做那个 ASCII 路径验证（一次性，纯编译，不需要运行）；
 3. 若只是想"界面像 WinUI"，A 路线（WPF 界面层重写）在观感上等价、成本可控、且我全程能自查。
+
+### 10.3 补充证据（2026-10-20）：MakePri 的中文路径假设被否
+
+- 直接运行 SDK 里的 **x64** `makepri.exe /?` → **退出码 0**，正常打印用法。
+  → 说明「中文路径导致 MakePri 拒绝访问」不成立。
+- 之前我抓到的 `0x80070005` 来自 `...\bin\10.0.26100.0\**arm64**\makepri.exe`（我自己 glob 取错了架构），
+  MSBuild 实际调用的是哪一份**未确认**（重建被 NuGet TLS 挡住，没跑到 PRI 那一步）。
+- 结论不变：这只影响「能不能打包 PRI」，不解释 `RoGetActivationFactory` 失败；WinUI 3 仍处 P0 失败状态。
+
+### 10.4 路线决定（2026-10-20）
+
+改走 **A：不换框架、重写界面层**，方案见 `docs/29-桌巢-界面层重写方案.md`。WinUI 3 迁移暂停，保留全部证据与探针工程。
