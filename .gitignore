@@ -54,3 +54,6 @@ dist/winui/
 
 # MakePri 需要一个 ASCII 且位于项目内的 TEMP 目录（pack-shell.ps1 用）
 _tmp/
+
+# 工作区记忆（存项目数据，不进仓库）
+.workbuddy/
