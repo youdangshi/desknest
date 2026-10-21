@@ -117,3 +117,14 @@
   达标与否用截图像素采样量，不靠肉眼判断（工具见 `HANDOFF.md` 已知坑 22）。
 - **【新】鼠标/键盘注入在这台机器上无效**（`SendInput` 返回成功但应用收不到）：
   交互类改动要么抽出纯函数写进 `tools/DeskNest.Smoke`，要么请用户亲手试，别声称"我已测试通过"。
+
+### 2026-10-21 追加（WinUI 3 P1 通过后补的约定）
+
+- **【新】构建/打包 WinUI 壳必须走 ASCII 路径**：`tools/pack-shell.ps1` 会自动建 `C:\DNB` 目录联接（→ 项目根）
+  并把 `TEMP/TMP` 指到 `C:\DNB\_tmp`；**别对着中文路径直接 `dotnet build`**，MakePri 会 0x80070005。
+  单独修这两条都不够，必须同时满足（细节与证据见 `docs/28` §10.6）。
+- **【新】MSIX 包里必须有应用自己的 `resources.pri`**：不许再关 PRI 生成
+  （`MicrosoftProjectPriGenerationEnable` / `EnablePriGenTooling`）。关了 → XBF 解析失败 → **静默 fail-fast**
+  （WER 0xC000027B / combase.dll，托管日志只停在 `MainWindow ctor`，看不出原因，最容易误判成"启动前就死"）。
+- **【新】`App.xaml` 的 `XamlControlsResources` 不许删**：它是 WinUI 控件的主题资源来源，
+  删了 NavigationView 会抛 `Cannot find a Resource with the Name/Key TabViewButtonBackground`。它不会自动生成。
