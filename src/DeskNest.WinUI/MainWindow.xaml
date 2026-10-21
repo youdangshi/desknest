@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Window
     x:Class="DeskNest.WinUI.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -21,7 +21,7 @@
                     <muxc:NavigationViewItem.Icon><SymbolIcon Symbol="Folder"/></muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>
                 <muxc:NavigationViewItem Content="外观与主题" Tag="appearance">
-                    <muxc:NavigationViewItem.Icon><SymbolIcon Symbol="Color"/></muxc:NavigationViewItem.Icon>
+                    <muxc:NavigationViewItem.Icon><SymbolIcon Symbol="FontColor"/></muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>
                 <muxc:NavigationViewItem Content="数据与备份" Tag="data">
                     <muxc:NavigationViewItem.Icon><SymbolIcon Symbol="Save"/></muxc:NavigationViewItem.Icon>
