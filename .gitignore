@@ -51,3 +51,6 @@ _msix/*.msix
 
 _msix/shell-layout/
 dist/winui/
+
+# MakePri 需要一个 ASCII 且位于项目内的 TEMP 目录（pack-shell.ps1 用）
+_tmp/

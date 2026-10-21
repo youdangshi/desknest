@@ -5,6 +5,14 @@
 
 ## 快照索引
 
+- 2026-10-21 22:5x —— **WinUI 3 P1 壳判通过**。启动即崩的三个连环坑全修掉（细节在 `docs/28` §10.6）：
+  ①csproj 关掉了 PRI 生成 → MSIX 缺 `resources.pri` → XBF 解析 fail-fast 0xC000027B；
+  ②MakePri 0x80070005 双因：中文项目路径被 ANSI 损坏（`C:\Users\李` → `C:\Users\Ng`，修法 = 建目录联接
+  `C:\DNB` → 项目根，从联接构建）+ `%TEMP%` 在工作区外被拒（修法 = TEMP 指联接下 `_tmp`）；
+  ③`App.xaml` 的 `XamlControlsResources` 被误删 → `TabViewButtonBackground` 找不到（**这个字典不能删**）。
+  新增 `tools/pack-shell.ps1`（构建→暂存→makeappx→`dist\winui`，`-Install` 直接注册启动）与 `build-shell.cmd`；
+  日志走完全程、窗口真实出现（截图 `_re/shots/winui-shell.png` 自证，不进仓库）。下一步 P2（桌面盒窗口）。
+
 - 2026-10-17 15:2x —— **项目目录迁移**：`C:\Users\李\Desktop\项目组\desktop-organizer` → `C:\Users\李\Desktop\DeskNest`（整个 git 仓库连同 .git 一起搬，历史不变）。新增 `build.ps1`（一键编译，`-Smoke` 跑 56 项冒烟）与 `run.ps1`（启动 Debug/Release），两个脚本都路径无关、带 UTF-8 BOM，dotnet 与缓存仍指向 `C:\Users\李\.dotnet-sdk` 与 `C:\Users\李\Desktop\项目组\.dotnet-home|\.nuget`。
 
 - 2026-10-17 15:3x —— **v2.0 反馈修复第三/四批 + 图标换新**。

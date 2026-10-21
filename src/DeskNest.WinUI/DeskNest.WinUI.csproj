@@ -11,10 +11,11 @@
     <WindowsPackageType>None</WindowsPackageType>
     <SelfContained>true</SelfContained>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-    <!-- resources.pri 只给 MSIX 用，MakePri 在中文路径下会挂，直接关掉 -->
-    <MicrosoftProjectPriGenerationEnable>false</MicrosoftProjectPriGenerationEnable>
-    <EnablePriGenTooling>false</EnablePriGenTooling>
-    <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
+    <!-- resources.pri 必须有：运行时按 MSIX 包跑，MainWindow.xbf 这类 XBF 走 MRT 解析，
+         没有 app 自己的 resources.pri 会在 InitializeComponent 里 fail-fast(0xC000027B)。
+         MakePri 怀疑过中文路径，实测 x64 makepri 正常，先开着；真挂了再走 ASCII 路径构建。 -->
+    <MicrosoftProjectPriGenerationEnable>true</MicrosoftProjectPriGenerationEnable>
+    <EnablePriGenTooling>true</EnablePriGenTooling>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>

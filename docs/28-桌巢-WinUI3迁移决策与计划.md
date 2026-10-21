@@ -169,3 +169,32 @@ HWND=0x221058
 | `bottom` | 窗口**看不见**（沉到壁纸后面） | ❌ 不可用 |
 
 **P0 判通过**，进入 P1（WinUI 壳）。宿主策略定为 **owner + WS_EX_TOOLWINDOW**。
+
+### 10.6 P1 结果（2026-10-21 22:5x）：通过，壳已能跑
+
+启动即崩的三个连环坑，全部定位并修掉：
+
+1. **静默 fail-fast（WER: 0xC000027B / combase.dll），托管日志停在 MainWindow ctor**
+   —— csproj 把 PRI 生成关了（`MicrosoftProjectPriGenerationEnable=false` 等），
+   MSIX 里没有应用自己的 resources.pri，`MainWindow.xbf` 走 MRT 解析失败。
+   修复：恢复 PRI 生成；打包时把 `DeskNest.WinUI.pri` 复制为包根的 `resources.pri`。
+2. **MakePri 0x80070005（MSB6006）**，两个独立原因（§10.3 的"中文路径不成立"结论只验证了 `/?`，
+   对带真实路径的 `New` 不成立）：
+   - 项目路径含中文（`C:/Users/李/`）被 ANSI 的 MakePri 损坏成 `C:/Users/Ng/` → PRI180 不存在。
+     修法：建目录联接 `C:/DNB` → 项目根，从联接路径构建。
+   - `%TEMP%` 在工作区之外 → exit 5（access denied）且**零报错**。修法：TEMP/TMP 指到
+     联接下的 `_tmp`（ASCII 且在项目内）。
+3. **补回 PRI 后仍崩，但变成正常托管异常**：`XamlParseException: Cannot find a Resource
+   with the Name/Key TabViewButtonBackground` —— 前一晚把 `App.xaml` 的 `XamlControlsResources`
+   当"重复"删掉了；它是 NavigationView 等控件主题资源的来源，**不能删**。已恢复。
+
+结果：日志走完全程（App ctor → OnLaunched → MainWindow InitializeComponent → Navigate →
+Activate → `nav -> overview`），窗口真实出现（标题「桌巢 DeskNest」，1536x814，可见可响应），
+截图 `_re/shots/winui-shell.png`（PrintWindow 抓取，**不进仓库**）。
+
+一键脚本：新增 `tools/pack-shell.ps1`（构建 → ASCII 暂存 → makeappx → `dist\winui`；加 `-Install`
+直接注册并启动）与 `build-shell.cmd`（双击入口）；`install-shell.ps1` 补了
+`$ProgressPreference="SilentlyContinue"`（否则 Expand-Archive 刷上千行进度）。
+
+P1 完成判据（§5）：NavigationView + 5 页切换 ✔（`nav ->` 日志与页内容渲染均正常）；
+**深浅色切换待用户现场看一眼**。下一步 P2（桌面盒窗口）。

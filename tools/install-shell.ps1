@@ -1,5 +1,6 @@
 # Register the WinUI shell app (developer mode, no signature needed).
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"   # Expand-Archive would otherwise spam 1000s of lines
 $here = Split-Path -Parent $PSScriptRoot
 $msix = Join-Path $here "dist\winui\DeskNestShell-unsigned.msix"
 if (-not (Test-Path $msix)) { throw "missing $msix" }
