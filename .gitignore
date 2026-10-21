@@ -48,3 +48,6 @@ dist/spike/
 _msix/fulltest/
 _msix/mini/
 _msix/*.msix
+
+_msix/shell-layout/
+dist/winui/
