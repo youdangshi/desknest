@@ -65,12 +65,17 @@ public static partial class UiKit
     /// </summary>
     public static UIElement ExpanderRow(string glyph, string title, string? subtitle, UIElement? rightControl,
         params UIElement[] childRows)
+        => ExpanderRow(glyph, title, subtitle, rightControl, false, childRows);
+
+    /// <summary>expanded=true 时默认展开（一组里最重要的那组用，比如二级页的第一个分组）。</summary>
+    public static UIElement ExpanderRow(string glyph, string title, string? subtitle, UIElement? rightControl,
+        bool expanded, params UIElement[] childRows)
     {
         var host = new StackPanel();
 
         var chevron = new SymbolIcon { Symbol = SymbolRegular.ChevronDown24, FontSize = 12, Opacity = 0.7 };
         chevron.RenderTransformOrigin = new Point(0.5, 0.5);
-        chevron.RenderTransform = new RotateTransform(0);
+        chevron.RenderTransform = new RotateTransform(expanded ? 180 : 0);
 
         var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         if (rightControl is not null)
@@ -81,7 +86,11 @@ public static partial class UiKit
         }
         right.Children.Add(chevron);
 
-        var childrenHost = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, Tokens.Space4, 0, Tokens.Space8) };
+        var childrenHost = new StackPanel
+        {
+            Visibility = expanded ? Visibility.Visible : Visibility.Collapsed,
+            Margin = new Thickness(0, Tokens.Space4, 0, Tokens.Space8)
+        };
         foreach (var row in childRows) childrenHost.Children.Add(row);
 
         var header = Row(glyph, title, subtitle, right, () =>
@@ -103,7 +112,7 @@ public static partial class UiKit
 
         var back = new Button
         {
-            Content = Icons.Vector("arrow_minimize", 14, Theme.Current.SecondaryColor),
+            Content = new SymbolIcon { Symbol = SymbolRegular.ArrowLeft24, FontSize = 14 },
             Margin = new Thickness(0, 0, Tokens.Space8, 0),
             ToolTip = "返回"
         };

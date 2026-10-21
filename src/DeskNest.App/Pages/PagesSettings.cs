@@ -112,26 +112,31 @@ public static class AppearancePage
         return col;
     }
 
-    /// <summary>一套完整的"配色 / 材质 / 强度 / 透明度 / 圆角"设置行。</summary>
+    /// <summary>
+    /// 一套完整的"配色 / 材质 / 强度 / 透明度 / 圆角"设置，折成两组（反馈⑧：不平铺）：
+    /// 「配色」默认展开（最常改），「材质与质感」收起。
+    /// </summary>
     private static UIElement Section(string title, string prefix, Func<ThemeTokens> read, MainWindow host)
     {
         var tokens = read();
         return UiKit.Section(title,
-            UiKit.ComboRow("🌗", "配色", "跟随系统 / 深色 / 浅色 / 纯黑 / 护眼", UiOptions.Schemes, tokens.Scheme.ToString(),
-                v => Save(prefix, read, tokens => tokens.Scheme = Enum.Parse<ColorScheme>(v), host, rebuild: true)),
-            CardColorRow(prefix, read, tokens, host),
-            UiKit.ComboRow("🪟", "材质", "亚克力最通透，纯色最省资源；材质与强度都会改变盒子实际画出来的底色",
-                UiOptions.Materials, tokens.Material.ToString(),
-                v => Save(prefix, read, t => t.Material = Enum.Parse<MaterialKind>(v), host)),
-            UiKit.SliderRow("💧", "材质强度", null, 0.1, 1.0, tokens.MaterialIntensity,
-                v => Save(prefix, read, t => t.MaterialIntensity = Math.Round(v, 2), host),
-                tokens.MaterialIntensity.ToString("0.00")),
-            UiKit.SliderRow("🌫", "默认透明度", null, 0.3, 1.0, tokens.Opacity,
-                v => Save(prefix, read, t => t.Opacity = Math.Round(v, 2), host),
-                tokens.Opacity.ToString("0.00")),
-            UiKit.SliderRow("⬜", "圆角", null, 0, 28, tokens.CornerRadius,
-                v => Save(prefix, read, t => t.CornerRadius = (int)Math.Round(v), host),
-                ((int)tokens.CornerRadius).ToString()));
+            UiKit.ExpanderRow("🌗", "配色", "深浅色与卡片底色", null, expanded: true,
+                UiKit.ComboRow("🌗", "配色", "跟随系统 / 深色 / 浅色 / 纯黑 / 护眼", UiOptions.Schemes, tokens.Scheme.ToString(),
+                    v => Save(prefix, read, tokens => tokens.Scheme = Enum.Parse<ColorScheme>(v), host, rebuild: true)),
+                CardColorRow(prefix, read, tokens, host)),
+            UiKit.ExpanderRow("🪟", "材质与质感", "材质 / 强度 / 透明度 / 圆角", null,
+                UiKit.ComboRow("🪟", "材质", "亚克力最通透，纯色最省资源；材质与强度都会改变盒子实际画出来的底色",
+                    UiOptions.Materials, tokens.Material.ToString(),
+                    v => Save(prefix, read, t => t.Material = Enum.Parse<MaterialKind>(v), host)),
+                UiKit.SliderRow("💧", "材质强度", null, 0.1, 1.0, tokens.MaterialIntensity,
+                    v => Save(prefix, read, t => t.MaterialIntensity = Math.Round(v, 2), host),
+                    tokens.MaterialIntensity.ToString("0.00")),
+                UiKit.SliderRow("🌫", "默认透明度", null, 0.3, 1.0, tokens.Opacity,
+                    v => Save(prefix, read, t => t.Opacity = Math.Round(v, 2), host),
+                    tokens.Opacity.ToString("0.00")),
+                UiKit.SliderRow("⬜", "圆角", null, 0, 28, tokens.CornerRadius,
+                    v => Save(prefix, read, t => t.CornerRadius = (int)Math.Round(v), host),
+                    ((int)tokens.CornerRadius).ToString())));
     }
 
     /// <summary>

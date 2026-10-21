@@ -5,6 +5,12 @@
 
 ## 快照索引
 
+- 2026-10-22 07:4x —— **反馈⑧（设置项分层）完成**。收纳盒页改为「盒子列表 → 点进二级页（面包屑返回）→
+  显示/外观/行为分组折叠」（`PagesBoxes.cs` 页内 Border 切换，不动主导航）；外观页 6 行折成
+  「配色 / 材质与质感」两组。`UiKit.ExpanderRow` 加了 `expanded` 重载（注意：optional 参数插在 params
+  前面会让旧的 5 参调用绑定失败 CS1503，所以用重载不用默认值）；`UiKit.Breadcrumb` 的返回箭头从
+  语义错误的 arrow_minimize 换成 SymbolRegular.ArrowLeft24。Debug 编译 0 错误、冒烟 82/82。
+  待用户真机验收（本机鼠标注入无效，点不了二级页）。至此 v2.0 八条反馈剩 ③ 待联调。
 - 2026-10-21 22:5x —— **WinUI 3 P1 壳判通过**。启动即崩的三个连环坑全修掉（细节在 `docs/28` §10.6）：
   ①csproj 关掉了 PRI 生成 → MSIX 缺 `resources.pri` → XBF 解析 fail-fast 0xC000027B；
   ②MakePri 0x80070005 双因：中文项目路径被 ANSI 损坏（`C:\Users\李` → `C:\Users\Ng`，修法 = 建目录联接

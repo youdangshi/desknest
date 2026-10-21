@@ -34,7 +34,24 @@ public static class BoxesPage
             Math.Min(screen.WorkY + 48 + offsetY, maxY));
     }
 
+    /// <summary>
+    /// 收纳盒页（分层结构，反馈⑧）：
+    ///   一级 = 盒子**列表**（每盒一行：名字 + 类型 + 文件数，右侧箭头）；
+    ///   点某一盒 → **二级页**（面包屑返回），里面按「显示 / 外观 / 行为」**分组折叠**。
+    /// 不再把每个盒子的十几行选项全部平铺在一页里。
+    /// 二级页是页内切换（换一个 Border 的 Child），不动主导航，切走再回来会回到列表。
+    /// </summary>
     public static UIElement Build(MainWindow host)
+    {
+        var container = new Border();
+        void ShowDetail(BoxRecord box) => container.Child = BuildDetailView(host, box, ShowList);
+        void ShowList() => container.Child = BuildListView(host, ShowDetail);
+        ShowList();
+        return container;
+    }
+
+    /// <summary>一级：盒子列表。</summary>
+    private static UIElement BuildListView(MainWindow host, Action<BoxRecord> openDetail)
     {
         var col = UiKit.Col();
         col.Children.Add(UiKit.PageHeader("收纳盒", "桌面上的分类容器。文件会被移动进盒子的存储目录，删除盒子时会自动还原。"));
@@ -47,23 +64,51 @@ public static class BoxesPage
             UiKit.ActionRow("🧹", "把桌面文件收进来", "这一步才会移动文件：先去「整理与规则 → 一键整理」，可以先预览再执行，随时能回滚", "去整理",
                 () => { host.NavigateTo("organize"); Ui.Notifications.Toast("在这里点「一键整理」——会先给你预览，确认后才动文件", 6); })));
 
-        var cards = new List<UIElement>();
-        foreach (var box in AppServices.Repo.Boxes())
+        var boxes = AppServices.Repo.Boxes();
+        if (boxes.Count == 0)
+        {
+            col.Children.Add(UiKit.Section("还没有收纳盒",
+                UiKit.Row("💡", "先新建一个试试", "推荐用「桌面分区」，桌面会干净很多", null)));
+            return col;
+        }
+
+        var rows = new List<UIElement>();
+        foreach (var box in boxes)
         {
             var captured = box;
-            var rows = new List<UIElement>
+            var count = AppServices.Repo.Items(captured.Id, captured.Kind == BoxKind.Mapped).Count;
+            var state = captured.IsHidden ? "已隐藏" : "显示中";
+            rows.Add(UiKit.NavRow("📦", captured.Name,
+                $"{KindText(captured.Kind)} · {count} 个文件项 · {state}",
+                () => openDetail(captured)));
+        }
+        col.Children.Add(UiKit.Section($"全部盒子（{boxes.Count} 个，点进去单独调）", rows.ToArray()));
+        return col;
+    }
+
+    /// <summary>二级：单个盒子的设置，按「显示 / 外观 / 行为」分组折叠。</summary>
+    private static UIElement BuildDetailView(MainWindow host, BoxRecord box, Action onBack)
+    {
+        var captured = box;
+        var col = UiKit.Col();
+        col.Children.Add(UiKit.Breadcrumb("收纳盒", captured.Name, onBack));
+
+        // 最常用的两行不收进折叠组：名字与"要不要显示在桌面上"。
+        col.Children.Add(UiKit.Section(null,
+            UiKit.InputRow("🏷", "名称", KindText(captured.Kind), captured.Name, v =>
             {
-                UiKit.InputRow("🏷", "名称", KindText(captured.Kind), captured.Name, v =>
-                {
-                    captured.Name = v;
-                    AppServices.Repo.Upsert(captured);
-                }, 180),
-                UiKit.Row("📂", "存储位置", BoxWindow.StorageRootOf(captured), UiKit.Btn("打开", () =>
-                {
-                    var root = BoxWindow.StorageRootOf(captured);
-                    Directory.CreateDirectory(root);
-                    System.Diagnostics.Process.Start("explorer.exe", "\"" + root + "\"");
-                })),
+                captured.Name = v;
+                AppServices.Repo.Upsert(captured);
+            }, 180),
+            UiKit.Row("📂", "存储位置", BoxWindow.StorageRootOf(captured), UiKit.Btn("打开", () =>
+            {
+                var root = BoxWindow.StorageRootOf(captured);
+                Directory.CreateDirectory(root);
+                System.Diagnostics.Process.Start("explorer.exe", "\"" + root + "\"");
+            }))));
+
+        col.Children.Add(UiKit.Section(null,
+            UiKit.ExpanderRow("👁", "显示", "显示状态 / 视图 / 图标大小", null, expanded: true,
                 UiKit.ToggleRow("👁", "在桌面上显示", $"当前 {AppServices.Repo.Items(captured.Id, captured.Kind == BoxKind.Mapped).Count} 个文件项",
                     !captured.IsHidden, v =>
                     {
@@ -71,18 +116,27 @@ public static class BoxesPage
                         AppServices.Repo.Upsert(captured);
                         (Application.Current as App)?.Desktop.ReloadBoxes();
                     }),
+                UiKit.ComboRow("📋", "视图", null, UiOptions.ViewModes, captured.ViewMode, m =>
+                {
+                    captured.ViewMode = m;
+                    AppServices.Repo.Upsert(captured);
+                    (Application.Current as App)?.Desktop.ReloadBoxes();
+                }),
+                UiKit.SliderRow("🔳", "图标大小", "也可以按住 Ctrl + 滚轮直接在桌面上调", 18, 72, captured.IconSize, v =>
+                {
+                    captured.IconSize = (int)v;
+                    AppServices.Repo.Upsert(captured);
+                    (Application.Current as App)?.Desktop.ReloadBoxes();
+                }, ((int)captured.IconSize).ToString()))));
+
+        col.Children.Add(UiKit.Section(null,
+            UiKit.ExpanderRow("🎨", "外观", "透明度 / 圆角 / 材质 / 是否跟随全局", null,
                 UiKit.SliderRow("🌫", "透明度", null, 0.2, 1.0, captured.Opacity, v =>
                 {
                     captured.Opacity = Math.Round(v, 2);
                     AppServices.Repo.Upsert(captured);
                     (Application.Current as App)?.Desktop.ApplyLookToAll();
                 }, captured.Opacity.ToString("0.00")),
-                UiKit.SliderRow("🔳", "图标大小", "也可以按住 Ctrl + 滚轮直接在桌面上调", 18, 72, captured.IconSize, v =>
-                {
-                    captured.IconSize = (int)v;
-                    AppServices.Repo.Upsert(captured);
-                    (Application.Current as App)?.Desktop.ReloadBoxes();
-                }, ((int)captured.IconSize).ToString()),
                 UiKit.SliderRow("⬜", "圆角", null, 0, 28, captured.CornerRadius, v =>
                 {
                     captured.CornerRadius = (int)v;
@@ -95,61 +149,53 @@ public static class BoxesPage
                     AppServices.Repo.Upsert(captured);
                     (Application.Current as App)?.Desktop.ApplyLookToAll();
                 }),
-                UiKit.ComboRow("📋", "视图", null, UiOptions.ViewModes, captured.ViewMode, m =>
-                {
-                    captured.ViewMode = m;
-                    AppServices.Repo.Upsert(captured);
-                    (Application.Current as App)?.Desktop.ReloadBoxes();
-                }),
                 UiKit.ToggleRow("🎨", "单独样式（不跟随全局）", "每个盒子都可以和别的盒子长得不一样",
                     captured.StyleScope == StyleScope.Override, v =>
                     {
                         captured.StyleScope = v ? StyleScope.Override : StyleScope.Inherit;
                         AppServices.Repo.Upsert(captured);
                         (Application.Current as App)?.Desktop.ApplyLookToAll();
-                    }),
+                    }))));
+
+        col.Children.Add(UiKit.Section(null,
+            UiKit.ExpanderRow("🔒", "行为", "锁定位置与尺寸", null,
                 UiKit.ToggleRow("🔒", "锁定位置 / 尺寸", null, captured.LockPosition && captured.LockSize, v =>
                 {
                     captured.LockPosition = v;
                     captured.LockSize = v;
                     AppServices.Repo.Upsert(captured);
-                }),
-                UiKit.ActionRow("🗑", "删除这个盒子", "盒内文件会逐个还原到原位置（原位置不存在则还原到桌面）", "删除", () =>
+                }))));
+
+        col.Children.Add(UiKit.Section(null,
+            UiKit.ActionRow("🗑", "删除这个盒子", "盒内文件会逐个还原到原位置（原位置不存在则还原到桌面）", "删除", () =>
+            {
+                // 确认框挂到主窗口上：不指定拥有者时对话框有可能跑到主窗口后面，
+                // 用户就会觉得"点了删除没反应"
+                var ok = MessageBox.Show(host, $"删除盒子「{captured.Name}」并把盒内文件还原到原位置？", "删除收纳盒",
+                    MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                if (ok != MessageBoxResult.OK) return;
+
+                try
                 {
-                    // 确认框挂到主窗口上：不指定拥有者时对话框有可能跑到主窗口后面，
-                    // 用户就会觉得"点了删除没反应"
-                    var ok = MessageBox.Show(host, $"删除盒子「{captured.Name}」并把盒内文件还原到原位置？", "删除收纳盒",
-                        MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-                    if (ok != MessageBoxResult.OK) return;
-
-                    try
+                    var outcome = AppServices.Boxes.Delete(captured);
+                    if (outcome.StillInDatabase)
                     {
-                        var outcome = AppServices.Boxes.Delete(captured);
-                        if (outcome.StillInDatabase)
-                        {
-                            Ui.Notifications.Toast("删除没生效：记录仍然在库里，请把日志发给开发者", 8);
-                        }
-                        else
-                        {
-                            (Application.Current as App)?.Desktop.CloseBox(captured.Id);
-                            var extra = outcome.Failed > 0 ? $"，{outcome.Failed} 个文件还原失败（见日志）" : "";
-                            Ui.Notifications.Toast($"已删除「{captured.Name}」，还原 {outcome.Restored} 个文件{extra}", 5);
-                        }
+                        Ui.Notifications.Toast("删除没生效：记录仍然在库里，请把日志发给开发者", 8);
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        Log.Error($"删除盒子失败：{ex}");
-                        Ui.Notifications.Toast("删除失败：" + ex.Message, 8);
+                        (Application.Current as App)?.Desktop.CloseBox(captured.Id);
+                        var extra = outcome.Failed > 0 ? $"，{outcome.Failed} 个文件还原失败（见日志）" : "";
+                        Ui.Notifications.Toast($"已删除「{captured.Name}」，还原 {outcome.Restored} 个文件{extra}", 5);
                     }
-                    host.RefreshCurrent();
-                })
-            };
-            cards.Add(UiKit.Section(captured.Name, rows.ToArray()));
-        }
-
-        if (cards.Count == 0)
-            cards.Add(UiKit.Section("还没有收纳盒", UiKit.Row("💡", "先新建一个试试", "推荐用「桌面分区」，桌面会干净很多", null)));
-        foreach (var card in cards) col.Children.Add(card);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"删除盒子失败：{ex}");
+                    Ui.Notifications.Toast("删除失败：" + ex.Message, 8);
+                }
+                host.RefreshCurrent();
+            })));
         return col;
     }
 
