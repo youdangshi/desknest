@@ -92,18 +92,7 @@ public sealed partial class BoxWindow
             var root = StorageRoot();
             Directory.CreateDirectory(root);
             var lnkPath = FileOps.UniquePath(root, displayName + ".lnk");
-            var shellType = Type.GetTypeFromProgID("WScript.Shell");
-            if (shellType is null)
-            {
-                Ui.Notifications.Toast("这台机器上没法创建快捷方式（WScript.Shell 不可用）", 5);
-                return;
-            }
-            dynamic shell = Activator.CreateInstance(shellType)!;
-            dynamic link = shell.CreateShortcut(lnkPath);
-            link.TargetPath = Path.Combine(Environment.SystemDirectory, "explorer.exe");
-            link.Arguments = shellTarget;
-            link.Description = displayName + "（由桌巢收纳）";
-            link.Save();
+            CreateShellShortcutLink(lnkPath, shellTarget, displayName);
 
             AppServices.Repo.Upsert(new ItemRecord
             {
@@ -124,6 +113,22 @@ public sealed partial class BoxWindow
             Log.Warn($"创建系统图标快捷方式失败：{ex.Message}");
             Ui.Notifications.Toast("收进盒子失败：" + ex.Message);
         }
+    }
+
+    /// <summary>
+    /// 真正写 .lnk 的纯函数（COM WScript.Shell）：指向 explorer.exe + shell:xxx 目标。
+    /// 抽成静态方法是为了让冒烟测试不建窗口也能直接验证这条链路。
+    /// </summary>
+    private static void CreateShellShortcutLink(string lnkPath, string shellTarget, string displayName)
+    {
+        var shellType = Type.GetTypeFromProgID("WScript.Shell")
+            ?? throw new InvalidOperationException("这台机器上没法创建快捷方式（WScript.Shell 不可用）");
+        dynamic shell = Activator.CreateInstance(shellType)!;
+        dynamic link = shell.CreateShortcut(lnkPath);
+        link.TargetPath = Path.Combine(Environment.SystemDirectory, "explorer.exe");
+        link.Arguments = shellTarget;
+        link.Description = displayName + "（由桌巢收纳）";
+        link.Save();
     }
 
     private void AddFilesByDialog()

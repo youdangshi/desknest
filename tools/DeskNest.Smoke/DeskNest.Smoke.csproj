@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>DeskNest.Smoke</AssemblyName>
+    <!-- ⑧ 分层的 UI 冒烟要真建 WPF 控件（只建树、不渲染），需要 WPF 框架引用 -->
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\DeskNest.Core\DeskNest.Core.csproj" />

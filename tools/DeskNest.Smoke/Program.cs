@@ -1,3 +1,5 @@
+using System.IO;   // UseWPF 后 SDK 隐式 using 换成桌面集，System.IO 不再自动带
+using System.Reflection;
 using DeskNest.Core;
 using DeskNest.Core.Data;
 using DeskNest.Core.Services;
@@ -319,6 +321,142 @@ Check("已经是最后一个再下移不动", () => !boxes.MoveMember(mv1, 1));
 Check("上移把它换回最前", () => boxes.MoveMember(mv1, -1)
     && repo.Groups().First(g => g.Id == mvGroup.Id).MemberIds == mv1.Id + ";" + mv2.Id);
 Check("已经是第一个再上移不动", () => !boxes.MoveMember(mv1, -1));
+
+Console.WriteLine("== ③ 系统图标拖入：虚拟目标表 + 快捷方式生成 ==");
+{
+    var boxWindow = typeof(DeskNest.App.Windows.BoxWindow);
+    var shellTargets = (Dictionary<string, string>)boxWindow
+        .GetField("VirtualShellTargets", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+    foreach (var name in new[] { "回收站", "此电脑", "计算机", "网络", "控制面板", "用户文件夹", "文档" })
+    {
+        var captured = name;
+        Check($"虚拟目标表认得「{captured}」", () => shellTargets.ContainsKey(captured));
+    }
+    Check("「此电脑」映射到 shell:MyComputerFolder", () => shellTargets["此电脑"] == "shell:MyComputerFolder");
+    Check("「计算机」与「此电脑」同目标（不同系统叫法都收）", () => shellTargets["计算机"] == shellTargets["此电脑"]);
+
+    // 真实调用抽出来的 COM 写 .lnk 函数，再用 COM 读回来逐字段校验
+    var createLink = boxWindow.GetMethod("CreateShellShortcutLink", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("CreateShellShortcutLink 方法不存在");
+    var lnkDir = Path.Combine(Path.GetTempPath(), "desknest-lnk-" + Guid.NewGuid().ToString("n"));
+    Directory.CreateDirectory(lnkDir);
+    var lnkPath = Path.Combine(lnkDir, "此电脑.lnk");
+    createLink.Invoke(null, new object?[] { lnkPath, "shell:MyComputerFolder", "此电脑" });
+    Check(".lnk 真的写出来了（非空文件）", () => File.Exists(lnkPath) && new FileInfo(lnkPath).Length > 100);
+    var shellType = Type.GetTypeFromProgID("WScript.Shell")!;
+    dynamic shell = Activator.CreateInstance(shellType)!;
+    dynamic lnk = shell.CreateShortcut(lnkPath);
+    Check("快捷方式指向 explorer.exe",
+        () => ((string)lnk.TargetPath).EndsWith("explorer.exe", StringComparison.OrdinalIgnoreCase));
+    Check("快捷方式参数是 shell:MyComputerFolder（双击即打开此电脑）",
+        () => (string)lnk.Arguments == "shell:MyComputerFolder");
+    try { Directory.Delete(lnkDir, true); } catch { }
+}
+
+Console.WriteLine("== ⑧ 设置页分层：列表 → 二级页 → 分组折叠 ==");
+{
+    // 页面构建只读 AppServices.Repo：冒烟库本来就是临时的，直接接上（绝不碰真实数据目录）。
+    typeof(DeskNest.App.Host.AppServices).GetProperty("Repo")!
+        .GetSetMethod(true)!.Invoke(null, new object?[] { repo });
+
+    // WPF 控件必须在 STA 线程上建；只建树不渲染，不需要 Application / 消息循环。
+    Exception? uiError = null;
+    var uiThread = new System.Threading.Thread(() =>
+    {
+        try
+        {
+            IEnumerable<System.Windows.DependencyObject> Walk(System.Windows.DependencyObject node)
+            {
+                yield return node;
+                // CardControl 的 Header/Content 不一定进逻辑树，手动补一刀
+                if (node is Wpf.Ui.Controls.CardControl card)
+                {
+                    if (card.Header is System.Windows.DependencyObject h)
+                        foreach (var d in Walk(h)) yield return d;
+                    if (card.Content is System.Windows.DependencyObject c)
+                        foreach (var d in Walk(c)) yield return d;
+                }
+                foreach (var child in System.Windows.LogicalTreeHelper.GetChildren(node)
+                             .OfType<System.Windows.DependencyObject>())
+                    foreach (var d in Walk(child)) yield return d;
+            }
+            string AllText(System.Windows.DependencyObject node)
+            {
+                var sb = new System.Text.StringBuilder();
+                foreach (var d in Walk(node))
+                {
+                    if (d is System.Windows.Controls.TextBlock tb) sb.Append(tb.Text).Append('|');
+                    else if (d is Wpf.Ui.Controls.TextBlock wtb) sb.Append(wtb.Text).Append('|');
+                }
+                return sb.ToString();
+            }
+            bool IsNavCard(System.Windows.DependencyObject d) =>
+                d is Wpf.Ui.Controls.CardControl cc
+                && cc.Content is Wpf.Ui.Controls.SymbolIcon si
+                && si.Symbol == Wpf.Ui.Controls.SymbolRegular.ChevronRight24;
+            void Click(Wpf.Ui.Controls.CardControl card) =>
+                card.RaiseEvent(new System.Windows.RoutedEventArgs(Wpf.Ui.Controls.CardControl.ClickEvent));
+
+            var container = (System.Windows.Controls.Border)DeskNest.App.Pages.BoxesPage.Build(null!);
+            var list = container.Child;
+
+            Check("一级页是盒子列表（有「全部盒子」分组）",
+                () => AllText(list).Contains("全部盒子（"));
+            var navCards = Walk(list).Where(IsNavCard).Cast<Wpf.Ui.Controls.CardControl>().ToList();
+            Check("每个盒子一行箭头行（数量与库里的盒子一致）",
+                () => navCards.Count == repo.Boxes().Count && navCards.Count >= 2);
+
+            Click(navCards[0]);
+            var detail = container.Child;
+            Check("点盒子行后进入二级页（不再是列表）", () => !ReferenceEquals(detail, list));
+            Check("二级页顶部有面包屑「收纳盒 › …」",
+                () => { var t = AllText(detail); return t.Contains("收纳盒") && t.Contains(" › "); });
+
+            // ExpanderRow 宿主 = 两个孩子的 StackPanel：[标题卡片, 子行容器]
+            var expanders = Walk(detail).OfType<System.Windows.Controls.StackPanel>()
+                .Where(sp => sp.Children.Count == 2
+                             && sp.Children[0] is Wpf.Ui.Controls.CardControl
+                             && sp.Children[1] is System.Windows.Controls.StackPanel)
+                .Select(sp => (Header: (Wpf.Ui.Controls.CardControl)sp.Children[0],
+                               Title: AllText(sp.Children[0]),
+                               Body: (System.Windows.Controls.StackPanel)sp.Children[1]))
+                .ToList();
+            Check("二级页有 显示 / 外观 / 行为 三个折叠组", () =>
+                expanders.Any(e => e.Title.Contains("显示"))
+                && expanders.Any(e => e.Title.Contains("外观"))
+                && expanders.Any(e => e.Title.Contains("行为")));
+            var show = expanders.First(e => e.Title.Contains("显示"));
+            var look = expanders.First(e => e.Title.Contains("外观"));
+            var act = expanders.First(e => e.Title.Contains("行为"));
+            Check("「显示」组默认展开", () => show.Body.Visibility == System.Windows.Visibility.Visible);
+            Check("「外观」「行为」默认收起", () =>
+                look.Body.Visibility == System.Windows.Visibility.Collapsed
+                && act.Body.Visibility == System.Windows.Visibility.Collapsed);
+
+            Click(look.Header);
+            Check("点「外观」组头后展开", () => look.Body.Visibility == System.Windows.Visibility.Visible);
+            Click(look.Header);
+            Check("再点一次收回去", () => look.Body.Visibility == System.Windows.Visibility.Collapsed);
+
+            // 面包屑返回：找到 ToolTip=返回 的按钮并点击
+            var backBtn = Walk(detail).OfType<System.Windows.Controls.Button>()
+                .FirstOrDefault(b => "返回".Equals(b.ToolTip as string));
+            Check("二级页有返回按钮", () => backBtn is not null);
+            backBtn!.RaiseEvent(new System.Windows.RoutedEventArgs(
+                System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Check("返回后回到盒子列表", () => AllText(container.Child).Contains("全部盒子（"));
+        }
+        catch (Exception ex) { uiError = ex; }
+    });
+    uiThread.SetApartmentState(System.Threading.ApartmentState.STA);
+    uiThread.Start();
+    uiThread.Join();
+    if (uiError is not null)
+    {
+        failures.Add("⑧ 分层 UI 冒烟 —— 异常：" + uiError.Message);
+        Console.WriteLine("  FAIL  ⑧ 分层 UI 冒烟 —— 异常：" + uiError.Message);
+    }
+}
 Console.WriteLine();
 Console.WriteLine($"通过 {passed} 项，失败 {failures.Count} 项");
 foreach (var f in failures) Console.WriteLine("  失败：" + f);

@@ -5,6 +5,12 @@
 
 ## 快照索引
 
+- 2026-10-22 07:5x —— **③⑧ 都进了冒烟，105/105 全绿**（自测代替真机：本机鼠标注入无效）。
+  ③：COM 写 .lnk 段抽成 `BoxWindow.CreateShellShortcutLink`（private static），冒烟用反射真实调用并
+  用 COM 读回逐字段校验（12 项）。⑧：冒烟在 STA 线程直接建 WPF 视觉树（不渲染、不需 Application），
+  用 `CardControl.RaiseEvent(ClickEvent)` 模拟点击，验证列表→二级页→折叠/展开→返回全链路（11 项）。
+  冒烟工程加了 `<UseWPF>true</UseWPF>`——**注意这会把 SDK 隐式 using 换成桌面集，System.IO 不再自动带**，
+  Program.cs 顶部需显式 `using System.IO;`。v2.0 八条反馈至此全部 ✅。
 - 2026-10-22 07:4x —— **反馈⑧（设置项分层）完成**。收纳盒页改为「盒子列表 → 点进二级页（面包屑返回）→
   显示/外观/行为分组折叠」（`PagesBoxes.cs` 页内 Border 切换，不动主导航）；外观页 6 行折成
   「配色 / 材质与质感」两组。`UiKit.ExpanderRow` 加了 `expanded` 重载（注意：optional 参数插在 params
