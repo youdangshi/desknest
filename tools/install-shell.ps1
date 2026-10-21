@@ -10,7 +10,13 @@ if (Test-Path $devKey) {
   $v = (Get-ItemProperty $devKey -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense
   if ($v -eq 1) { $devMode = $true }
 }
-if (-not $devMode) { throw "developer mode is off: settings > system > for developers > developer mode" }
+if (-not $devMode) {
+  Write-Host "developer mode is OFF." -ForegroundColor Yellow
+  Write-Host "opening Settings > System > For developers ..." -ForegroundColor Yellow
+  Start-Process "ms-settings:developers"
+  Write-Host "turn ON 'Developer Mode', then run this script again." -ForegroundColor Yellow
+  exit 1
+}
 
 $old = Get-AppxPackage -Name "DeskNest.Shell"
 if ($old) { Remove-AppxPackage $old.PackageFullName }
