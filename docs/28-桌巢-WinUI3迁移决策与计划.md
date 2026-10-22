@@ -225,3 +225,24 @@ WPF 版 v2.0 八条反馈已全部清零（③⑧ 已进冒烟，105/105），�
 自证：`_re/shots/p2-box.png`（展开的演示盒）、`_re/shots/p2-box-rolled.png`（卷起的真实盒子，
 320x36 DIP 一条标题栏）· 日志全链路 · WPF 侧回归冒烟 105/105。
 下一步 P3：盒子菜单/拖文件进盒子/新建删除入口；主窗口 5 页内容填充。
+
+### 11.2 P3 结果（2026-10-22 09:0x）：盒子四交互 + 收纳盒页真实数据
+
+- **拖文件进盒子**：BoxWindow DragOver/Drop，StorageItems 真移动（FileOps.MoveIntoStorage）；
+  文本拖入（此电脑/回收站等虚拟图标）走 VirtualShellTargets 建 .lnk；拖入时边框高亮 + 状态条提示。
+- **右键菜单**（标题栏与列表区）：打开存储位置 / 添加文件(FileOpenPicker 挂 HWND) /
+  重命名(ContentDialog) / 卷起 / 隐藏(写库+关窗) / 删除(确认框→BoxService.Delete 还原文件)。
+  双击列表项打开文件。
+- **BoxesPage 真实数据**：新建盒子（ContentDialog：名称+普通/映射，只建空盒不动文件）、
+  列表行 = 名称/类型/文件数/显示状态 + 显示隐藏开关 + 打开 + 删除；App.OpenBox/CloseBox
+  统一管窗口（去重、取消隐藏），App.BoxesChanged 事件让页面跟窗口状态同步。
+- **坑（大）**：`MenuFlyoutItem.Icon="Hide"` 不是合法 Symbol → XamlParseException 崩盒子窗口，
+  菜单图标全改 FontIcon。
+- **坑（巨大）**：`_re/shots/capture_window.py` 是 DPI 无感知的——125% 缩放的窗口被它截成
+  1536×814（实 1920×1017），右边 20% 永远缺。曾因此误判「按钮被挤出卡片」折腾三轮，
+  其实布局一直是对的（app 日志 TransformToVisual 坐标自证）。已修：脚本开头
+  SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)。**以后验证以窗口内日志坐标 + 全屏
+  ImageGrab 为准。**
+- 自证：p3-fullscreen.png（收纳盒页三行 + 开关/打开/删除全可见）、p3-final-box.png
+  （桌面卷起盒子条）。WPF 回归冒烟 105/105。
+- 待真机：拖文件进盒（注入无效）、右键菜单点击、深浅色切换。

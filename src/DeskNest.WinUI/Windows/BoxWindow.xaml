@@ -5,14 +5,35 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- 盒子 = 自绘标题栏（名称 + 卷起/隐藏）+ 文件列表。系统标题栏在 code-behind 里用 Win32 摘掉。 -->
-    <Grid x:Name="Root">
+    <Grid x:Name="Root" AllowDrop="True" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+
+        <Grid.ContextFlyout>
+            <MenuFlyout>
+                <MenuFlyoutItem x:Name="MenuOpenStorage" Text="打开存储位置" Icon="Folder" />
+                <MenuFlyoutItem x:Name="MenuAddFiles" Text="添加文件…" Icon="Add" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="MenuRename" Text="重命名…" Icon="Edit" />
+                <MenuFlyoutItem x:Name="MenuRollup" Text="卷起">
+                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE70E;" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Name="MenuHide" Text="隐藏（到主窗口找回）">
+                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xED1A;" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="MenuDelete" Text="删除盒子（文件还原）">
+                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+            </MenuFlyout>
+        </Grid.ContextFlyout>
+
         <Grid.RowDefinitions>
             <RowDefinition Height="36" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid x:Name="TitleBarGrid" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+        <Grid x:Name="TitleBarGrid">
             <TextBlock x:Name="TitleText" Text="收纳盒" Margin="12,0,0,0"
                        VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold"
                        IsHitTestVisible="False" />
@@ -24,8 +45,9 @@
             </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-            <ListView x:Name="ItemList">
+        <Grid Grid.Row="1">
+            <ListView x:Name="ItemList" Background="Transparent" IsItemClickEnabled="True"
+                      SelectionMode="None">
                 <ListView.ItemTemplate>
                     <DataTemplate>
                         <Grid>
@@ -40,9 +62,16 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
-            <TextBlock x:Name="EmptyText" Text="（空盒子——把文件拖进来）" Opacity="0.55"
+            <TextBlock x:Name="EmptyText" Text="（空盒子——把文件拖进来，或右键「添加文件」）" Opacity="0.55"
                        HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12"
-                       IsHitTestVisible="False" />
+                       IsHitTestVisible="False" TextWrapping="Wrap" Margin="16,0" />
         </Grid>
+
+        <!-- 状态条：拖入/删除等操作的结果提示，几秒后自动消隐 -->
+        <Border x:Name="StatusBar" Grid.Row="2" Visibility="Collapsed"
+                Background="{ThemeResource SubtleFillColorSecondaryBrush}" Padding="10,4">
+            <TextBlock x:Name="StatusText" FontSize="11" Opacity="0.85"
+                       TextTrimming="CharacterEllipsis" />
+        </Border>
     </Grid>
 </Window>

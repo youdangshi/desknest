@@ -4,18 +4,30 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <ScrollViewer>
-        <StackPanel Padding="32,24,32,32" Spacing="16">
+    <ScrollViewer x:Name="RootScroll" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="RootPanel" Padding="32,24,32,32" Spacing="16">
+
             <TextBlock Text="收纳盒" FontSize="28" FontWeight="SemiBold" />
-            <TextBlock Text="盒子列表卡、新建/删除、5 个入口（S2 迁移）" TextWrapping="Wrap" Opacity="0.75" />
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="这一页已经接进 WinUI 壳（P1）" FontWeight="SemiBold" />
-                    <TextBlock Text="内容会按 S2–S4 逐步从 WPF 版迁移过来；现在只验证导航与主题。" TextWrapping="Wrap" Opacity="0.75" />
+            <TextBlock Text="桌面上的分类容器。文件会被移动进盒子的存储目录，删除盒子时会自动还原。"
+                       TextWrapping="Wrap" Opacity="0.75" />
+
+            <!-- 新建：只建空盒子，绝不动用户桌面上的文件（WPF 版 v1.1 的教训） -->
+            <Button x:Name="NewBoxButton" HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left" Padding="12,10">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <SymbolIcon Symbol="Add" />
+                    <StackPanel>
+                        <TextBlock Text="新建收纳盒" FontWeight="SemiBold" />
+                        <TextBlock Text="只建一个空盒子，不会动你桌面上任何文件"
+                                   FontSize="11" Opacity="0.7" />
+                    </StackPanel>
                 </StackPanel>
-            </Border>
+            </Button>
+
+            <TextBlock Text="全部盒子" FontSize="15" FontWeight="SemiBold" Margin="0,8,0,0" />
+            <StackPanel x:Name="BoxListHost" Spacing="8" />
+            <TextBlock x:Name="EmptyHint" Visibility="Collapsed" Opacity="0.6"
+                       Text="还没有收纳盒，点上面「新建收纳盒」试试。" TextWrapping="Wrap" />
         </StackPanel>
     </ScrollViewer>
 </Page>

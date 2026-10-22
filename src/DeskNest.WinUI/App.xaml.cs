@@ -10,11 +10,53 @@ public partial class App : Application
 {
     internal static readonly string LogPath = BuildLogPath();
 
-    /// <summary>与 WPF 版共用的数据库（WAL 模式，两进程同时读没问题）。只读场景为主。</summary>
+    /// <summary>与 WPF 版共用的数据库（WAL 模式，两进程同时读写没问题）。</summary>
     internal static DeskNest.Core.Data.Repository? Repo;
+
+    /// <summary>文件搬进/搬出盒子存储目录（与 WPF 版同一个实现，数据互通）。</summary>
+    internal static DeskNest.Core.Services.FileOps? Files;
+
+    /// <summary>盒子生命周期（删除盒子会先把文件还原回原位置）。</summary>
+    internal static DeskNest.Core.Services.BoxService? Boxes;
 
     /// <summary>当前开着的盒子窗口（拖动时互相吸附要用）。</summary>
     internal static readonly List<Windows.BoxWindow> BoxWindows = new();
+
+    /// <summary>
+    /// 打开（或聚焦）一个盒子窗口。同一个盒子只开一个窗口；隐藏的盒子打开前先取消隐藏。
+    /// </summary>
+    internal static Windows.BoxWindow OpenBox(DeskNest.Core.BoxRecord box)
+    {
+        var existing = BoxWindows.FirstOrDefault(w => w.BoxId == box.Id);
+        if (existing is not null)
+        {
+            existing.Activate();
+            return existing;
+        }
+        if (box.IsHidden)
+        {
+            box.IsHidden = false;
+            try { Repo?.Upsert(box); } catch (Exception ex) { Log("取消隐藏失败：" + ex.Message); }
+        }
+        var win = new Windows.BoxWindow(box);
+        BoxWindows.Add(win);
+        win.Activate();
+        return win;
+    }
+
+    internal static void CloseBox(string boxId)
+    {
+        var win = BoxWindows.FirstOrDefault(w => w.BoxId == boxId);
+        win?.Close();
+    }
+
+    /// <summary>盒子数据变了（新建/删除/改名/显示隐藏）后，让主窗口收纳盒页刷新。</summary>
+    internal static event Action? BoxesChanged;
+
+    internal static void NotifyBoxesChanged()
+    {
+        try { BoxesChanged?.Invoke(); } catch (Exception ex) { Log("BoxesChanged 通知失败：" + ex.Message); }
+    }
 
     private Window? _window;
 
@@ -66,6 +108,8 @@ public partial class App : Application
             {
                 var db = new DeskNest.Core.Data.Db();
                 Repo = new DeskNest.Core.Data.Repository(db);
+                Files = new DeskNest.Core.Services.FileOps(Repo);
+                Boxes = new DeskNest.Core.Services.BoxService(Repo, Files);
                 var boxes = Repo.Boxes().Where(b => !b.IsHidden).ToList();
                 Log($"boxes in db: {boxes.Count}");
                 foreach (var box in boxes)
