@@ -58,10 +58,51 @@ public partial class App : Application
         {
             try { w.ApplyLook(); } catch (Exception ex) { Log("应用外观失败：" + ex.Message); }
         }
+        foreach (var w in WidgetWindows.ToList())
+        {
+            try { w.ApplyLook(); } catch (Exception ex) { Log("应用组件外观失败：" + ex.Message); }
+        }
     }
 
     /// <summary>当前开着的盒子窗口（拖动时互相吸附要用）。</summary>
     internal static readonly List<Windows.BoxWindow> BoxWindows = new();
+
+    /// <summary>当前开着的桌面组件窗口。</summary>
+    internal static readonly List<Windows.WidgetWindow> WidgetWindows = new();
+
+    /// <summary>打开（或聚焦）一个桌面组件。同一个组件只开一个窗口；隐藏的先取消隐藏。</summary>
+    internal static Windows.WidgetWindow OpenWidget(DeskNest.Core.WidgetRecord widget)
+    {
+        var existing = WidgetWindows.FirstOrDefault(w => w.WidgetId == widget.Id);
+        if (existing is not null)
+        {
+            existing.Activate();
+            return existing;
+        }
+        if (!widget.IsVisible)
+        {
+            widget.IsVisible = true;
+            try { Repo?.Upsert(widget); } catch (Exception ex) { Log("组件取消隐藏失败：" + ex.Message); }
+        }
+        var win = new Windows.WidgetWindow(widget);
+        WidgetWindows.Add(win);
+        win.Activate();
+        return win;
+    }
+
+    internal static void CloseWidget(string id)
+    {
+        var win = WidgetWindows.FirstOrDefault(w => w.WidgetId == id);
+        win?.Close();
+    }
+
+    /// <summary>组件数据变了（新建/删除/显示隐藏）后通知页面刷新。</summary>
+    internal static event Action? WidgetsChanged;
+
+    internal static void NotifyWidgetsChanged()
+    {
+        try { WidgetsChanged?.Invoke(); } catch (Exception ex) { Log("WidgetsChanged 通知失败：" + ex.Message); }
+    }
 
     /// <summary>
     /// 打开（或聚焦）一个盒子窗口。同一个盒子只开一个窗口；隐藏的盒子打开前先取消隐藏。
@@ -183,6 +224,17 @@ public partial class App : Application
                     demo.Activate();
                     Log("no boxes, demo BoxWindow activated");
                 }
+
+                // P5：恢复显示中的桌面组件
+                var widgets = Repo?.Widgets().Where(w => w.IsVisible).ToList() ?? new();
+                Log($"widgets in db: {widgets.Count}");
+                foreach (var widget in widgets)
+                {
+                    var win = new Windows.WidgetWindow(widget);
+                    WidgetWindows.Add(win);
+                    win.Activate();
+                }
+
             }
             catch (Exception ex)
             {

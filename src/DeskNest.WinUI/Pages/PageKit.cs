@@ -120,8 +120,8 @@ internal static class PageKit
         return grid;
     }
 
-    /// <summary>操作行：左侧标题/说明，右侧按钮。</summary>
-    public static UIElement ActionRow(string title, string? subtitle, Button button)
+    /// <summary>操作行：左侧标题/说明，右侧控件（通常是按钮，也可以是一排按钮）。</summary>
+    public static UIElement ActionRow(string title, string? subtitle, FrameworkElement rightControl)
     {
         var grid = new Grid { ColumnSpacing = 16 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -133,9 +133,9 @@ internal static class PageKit
             stack.Children.Add(new TextBlock { Text = subtitle, FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap });
         grid.Children.Add(stack);
 
-        button.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(button, 1);
-        grid.Children.Add(button);
+        rightControl.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(rightControl, 1);
+        grid.Children.Add(rightControl);
         return grid;
     }
 

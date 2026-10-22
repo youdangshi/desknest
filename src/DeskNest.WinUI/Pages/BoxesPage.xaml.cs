@@ -59,30 +59,27 @@ public sealed partial class BoxesPage : Page
     {
         var captured = box;
         var kind = captured.Kind == BoxKind.Mapped ? "映射盒" : "普通盒";
-        var itemCount = 0;
-        try { itemCount = App.Repo?.Items(captured.Id, captured.Kind == BoxKind.Mapped).Count ?? 0; } catch { }
+        var items = new List<ItemRecord>();
+        try { items = App.Repo?.Items(captured.Id, captured.Kind == BoxKind.Mapped) ?? new(); } catch { }
+        var itemCount = items.Count;
         var shown = App.BoxWindows.Any(w => w.BoxId == captured.Id);
 
-        var grid = new Grid { ColumnSpacing = 12 };
+        var grid = new Grid { ColumnSpacing = 14 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(230) });
 
-        grid.Children.Add(new FontIcon
-        {
-            Glyph = captured.Kind == BoxKind.Mapped ? "\uE8B7" : "\uE8A5",
-            FontSize = 18,
-            VerticalAlignment = VerticalAlignment.Center
-        });
+        // 左侧：盒子里的前 3 个文件的真图标叠成一小排预览（参考 Fences/资源管理器的"内容预览"）
+        grid.Children.Add(BuildMiniPreview(items, captured));
 
-        var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
         Grid.SetColumn(info, 1);
-        info.Children.Add(new TextBlock { Text = captured.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 13 });
+        info.Children.Add(new TextBlock { Text = captured.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 13.5 });
         info.Children.Add(new TextBlock
         {
             Text = $"{kind} · {itemCount} 个文件 · {(shown ? "显示中" : "已隐藏")}",
             FontSize = 11,
-            Opacity = 0.65
+            Opacity = 0.62
         });
         grid.Children.Add(info);
 
@@ -129,6 +126,50 @@ public sealed partial class BoxesPage : Page
         PageKit.SetThemedBrush(row, "DnCardBg", b => row.Background = b);
         PageKit.SetThemedBrush(row, "DnCardStroke", b => row.BorderBrush = b);
         return row;
+    }
+
+    /// <summary>盒子左侧的小预览：最多 3 个真图标叠一排；空盒显示虚线小方块。</summary>
+    private static UIElement BuildMiniPreview(List<ItemRecord> items, BoxRecord box)
+    {
+        var host = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 2,
+            VerticalAlignment = VerticalAlignment.Center,
+            Width = 92
+        };
+        if (items.Count == 0)
+        {
+            var empty = new Border
+            {
+                Width = 44, Height = 44, CornerRadius = new CornerRadius(8),
+                BorderThickness = new Thickness(1),
+                Child = new FontIcon
+                {
+                    Glyph = "\uE8B7", FontSize = 18, Opacity = 0.5,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            };
+            PageKit.SetThemedBrush(empty, "DnCardStroke", b => empty.BorderBrush = b);
+            PageKit.SetThemedBrush(empty, "DnSubtleBg", b => empty.Background = b);
+            host.Children.Add(empty);
+            return host;
+        }
+        foreach (var item in items.Take(3))
+        {
+            var path = item.StoredPath ?? item.SourcePath ?? "";
+            var icon = string.IsNullOrEmpty(path) ? null : Windows.IconLoader.Get(path, 32);
+            if (icon is not null)
+            {
+                host.Children.Add(new Image { Source = icon, Width = 30, Height = 30 });
+            }
+            else
+            {
+                host.Children.Add(new FontIcon { Glyph = "\uE8A5", FontSize = 24, Opacity = 0.6, Margin = new Thickness(3, 0, 3, 0) });
+            }
+        }
+        return host;
     }
 
     /// <summary>新建收纳盒：**只创建一个空盒子**，不移动任何文件。</summary>

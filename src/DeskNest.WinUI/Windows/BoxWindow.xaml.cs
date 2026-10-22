@@ -92,6 +92,7 @@ public sealed partial class BoxWindow : Window
         WireDrop();
         WireMenu();
         WireItemOpen();
+        WireTitleHover();
 
         CloseButton.Click += (_, _) => HideBox();
         RollupButton.Click += (_, _) => ToggleRollup();
@@ -107,20 +108,53 @@ public sealed partial class BoxWindow : Window
 
     // ---------- 数据 ----------
 
-    /// <summary>从数据库读盒内文件项（Core 与原 WPF 版共用，数据互通）。</summary>
+    /// <summary>
+    /// 从数据库读盒内文件项（Core 与原 WPF 版共用，数据互通）。
+    /// 显示用 BoxItemVm：图标是 Shell 真图标（缩略图级 40px），取不到才退回字体符号。
+    /// </summary>
     public void ReloadItems()
     {
         try
         {
             var items = App.Repo?.Items(_box.Id, _box.Kind == BoxKind.Mapped) ?? new List<ItemRecord>();
-            ItemList.ItemsSource = items;
-            EmptyText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            var vms = items.Select(ToVm).ToList();
+            ItemList.ItemsSource = vms;
+
+            CountText.Text = vms.Count.ToString();
+            EmptyState.Visibility = vms.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             App.Log($"BoxWindow[{_box.Name}] items = {items.Count}");
         }
         catch (Exception ex)
         {
             App.Log($"BoxWindow[{_box.Name}] load items FAILED: {ex.Message}");
         }
+    }
+
+    /// <summary>一条文件项 → 列表用的视图模型（图标 + 名称 + 原记录）。</summary>
+    private static BoxItemVm ToVm(ItemRecord item)
+    {
+        var path = item.StoredPath ?? item.SourcePath ?? "";
+        var isDir = item.Kind == ItemKind.Folder
+                    || (!string.IsNullOrEmpty(path) && !Path.HasExtension(path) && Directory.Exists(path));
+        var icon = string.IsNullOrEmpty(path) ? null : IconLoader.Get(path, 40);
+        return new BoxItemVm
+        {
+            Title = item.DisplayName,
+            Record = item,
+            Icon = icon,
+            Glyph = isDir ? "\uE8B7" : "\uE8A5",
+            GlyphVisibility = icon is null ? Visibility.Visible : Visibility.Collapsed
+        };
+    }
+
+    /// <summary>GridView 的数据项。</summary>
+    public sealed class BoxItemVm
+    {
+        public string Title { get; set; } = "";
+        public ItemRecord Record { get; set; } = new();
+        public Microsoft.UI.Xaml.Media.ImageSource? Icon { get; set; }
+        public string Glyph { get; set; } = "\uE8A5";
+        public Visibility GlyphVisibility { get; set; } = Visibility.Visible;
     }
 
     /// <summary>盒子存储目录（与 WPF 版 BoxWindow.StorageRootOf 同一套规则）。</summary>
@@ -298,7 +332,7 @@ public sealed partial class BoxWindow : Window
         }
         _rolledUp = rolled;
         _box.RolledUp = rolled;
-        RollupButton.Content = rolled ? "▢" : "—";
+        if (RollupButton.Content is FontIcon glyph) glyph.Glyph = rolled ? "\uE70D" : "\uE70E";
         MenuRollup.Text = rolled ? "展开" : "卷起";
         if (persist)
         {
@@ -498,20 +532,105 @@ public sealed partial class BoxWindow : Window
     /// <summary>双击列表项：打开文件（映射盒=原路径，普通盒=存储路径）。</summary>
     private void WireItemOpen()
     {
+        // 桌面盒子的习惯：单击选中，双击打开（和资源管理器一致）
+        ItemList.DoubleTapped += (_, e) =>
+        {
+            if (ItemList.SelectedItem is not BoxItemVm vm) return;
+            OpenItem(vm.Record);
+            e.Handled = true;
+        };
         ItemList.ItemClick += (_, e) =>
         {
-            if (e.ClickedItem is not ItemRecord item) return;
-            var path = item.StoredPath ?? item.SourcePath;
-            if (string.IsNullOrEmpty(path)) return;
-            try
+            if (e.ClickedItem is BoxItemVm vm) App.Log($"BoxWindow[{_box.Name}] 选中「{vm.Title}」");
+        };
+
+        // 每一项的右键菜单：打开 / 在资源管理器中显示 / 移出盒子
+        ItemList.ContainerContentChanging += (_, e) =>
+        {
+            if (e.Item is not BoxItemVm vm) return;
+            if (e.InRecycleQueue) return;
+            var menu = new MenuFlyout();
+            menu.Items.Add(MenuItem("打开", () => OpenItem(vm.Record)));
+            menu.Items.Add(MenuItem("在资源管理器中显示", () => RevealItem(vm.Record)));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(MenuItem("移出盒子（还原到原位置）", () => RemoveItem(vm.Record)));
+            e.ItemContainer.ContextFlyout = menu;
+        };
+    }
+
+    private static MenuFlyoutItem MenuItem(string text, Action action)
+    {
+        var item = new MenuFlyoutItem { Text = text };
+        item.Click += (_, _) => action();
+        return item;
+    }
+
+    private void OpenItem(ItemRecord item)
+    {
+        var path = item.StoredPath ?? item.SourcePath;
+        if (string.IsNullOrEmpty(path)) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Status("打开失败：" + ex.Message);
+            App.Log($"打开 {path} 失败：{ex.Message}");
+        }
+    }
+
+    private void RevealItem(ItemRecord item)
+    {
+        var path = item.StoredPath ?? item.SourcePath;
+        if (string.IsNullOrEmpty(path)) return;
+        try
+        {
+            System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");
+        }
+        catch (Exception ex) { Status("打开失败：" + ex.Message); }
+    }
+
+    /// <summary>移出盒子：文件还原回原位置（原位置没了就回桌面），再删掉这条记录。</summary>
+    private void RemoveItem(ItemRecord item)
+    {
+        try
+        {
+            if (App.Repo is null || App.Files is null) return;
+            var stored = item.StoredPath ?? item.SourcePath ?? "";
+            var result = App.Files.RestoreToOriginal(stored, item.SourcePath);
+            if (!result.Ok)
             {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+                Status("移出失败：" + result.Error);
+                App.Log($"移出失败 {stored}：{result.Error}");
+                return;
             }
-            catch (Exception ex)
-            {
-                Status("打开失败：" + ex.Message);
-                App.Log($"打开 {path} 失败：{ex.Message}");
-            }
+            App.Repo.DeleteItem(item.Id);
+            ReloadItems();
+            App.NotifyBoxesChanged();
+            Status($"已移出「{item.DisplayName}」");
+            App.Log($"移出盒子：{item.DisplayName} -> {result.StoredPath ?? item.SourcePath}");
+        }
+        catch (Exception ex)
+        {
+            Status("移出失败：" + ex.Message);
+            App.Log("移出失败：" + ex);
+        }
+    }
+
+    /// <summary>鼠标移到标题栏才显示 卷起/隐藏 两个按钮（平时让界面安静）。</summary>
+    private void WireTitleHover()
+    {
+        TitleBarGrid.PointerEntered += (_, _) => TitleActions.Opacity = 1;
+        TitleBarGrid.PointerExited += (_, _) =>
+        {
+            if (!_dragging) TitleActions.Opacity = 0;
+        };
+        // 双击标题栏 = 卷起/展开（常见桌面窗口习惯）
+        TitleBarGrid.DoubleTapped += (_, e) =>
+        {
+            ToggleRollup();
+            e.Handled = true;
         };
     }
 

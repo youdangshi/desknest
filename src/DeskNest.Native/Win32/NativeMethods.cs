@@ -281,4 +281,36 @@ internal static class NativeMethods
 
     [DllImport("kernel32.dll")]
     internal static extern IntPtr LocalFree(IntPtr hMem);
+
+    // ---------- GDI（图标渲染成像素用） ----------
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct BITMAPINFO
+    {
+        public int biSize;
+        public int biWidth;
+        public int biHeight;
+        public short biPlanes;
+        public short biBitCount;
+        public int biCompression;
+        public int biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public int biClrUsed;
+        public int biClrImportant;
+    }
+
+    internal const uint DI_NORMAL = 0x0003;
+    internal const uint BLACKNESS = 0x00000042;
+
+    [DllImport("user32.dll")] internal static extern IntPtr GetDC(IntPtr hWnd);
+    [DllImport("user32.dll")] internal static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+    [DllImport("gdi32.dll")] internal static extern IntPtr CreateCompatibleDC(IntPtr hDC);
+    [DllImport("gdi32.dll")] internal static extern bool DeleteDC(IntPtr hDC);
+    [DllImport("gdi32.dll")] internal static extern IntPtr SelectObject(IntPtr hDC, IntPtr hObj);
+    [DllImport("gdi32.dll")] internal static extern bool DeleteObject(IntPtr hObj);
+    [DllImport("gdi32.dll")] internal static extern IntPtr CreateDIBSection(IntPtr hDC, ref BITMAPINFO pbmi,
+        uint usage, out IntPtr ppvBits, IntPtr hSection, uint offset);
+    [DllImport("gdi32.dll")] internal static extern bool PatBlt(IntPtr hDC, int x, int y, int w, int h, uint rop);
+    [DllImport("user32.dll")] internal static extern bool DrawIconEx(IntPtr hDC, int x, int y, IntPtr hIcon,
+        int cx, int cy, uint istepIfAniCur, IntPtr hbrFlickerFreeDraw, uint diFlags);
 }

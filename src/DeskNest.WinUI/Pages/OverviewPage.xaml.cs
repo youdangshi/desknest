@@ -25,6 +25,7 @@ public sealed partial class OverviewPage : Page
     {
         base.OnNavigatedTo(e);
         App.BoxesChanged += OnBoxesChanged;
+        App.WidgetsChanged += OnBoxesChanged;
         Reload();
     }
 
@@ -32,6 +33,7 @@ public sealed partial class OverviewPage : Page
     {
         base.OnNavigatedFrom(e);
         App.BoxesChanged -= OnBoxesChanged;
+        App.WidgetsChanged -= OnBoxesChanged;
     }
 
     private void OnBoxesChanged() => DispatcherQueue.TryEnqueue(Reload);
@@ -78,6 +80,41 @@ public sealed partial class OverviewPage : Page
                 PageKit.Btn("打开", (_, _) => OpenFolder(AppPaths.DataRoot))));
             Host.Children.Add(PageKit.Card("常用操作", actions));
 
+            // 桌面组件（P5）
+            var widgets = PageKit.Column(10);
+            var addRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            addRow.Children.Add(PageKit.Btn("＋ 概览", (_, _) => AddWidget(WidgetKind.Glance), primary: true));
+            addRow.Children.Add(PageKit.Btn("＋ 待办", (_, _) => AddWidget(WidgetKind.Todo)));
+            addRow.Children.Add(PageKit.Btn("＋ 便签", (_, _) => AddWidget(WidgetKind.QuickNote)));
+            addRow.Children.Add(PageKit.Btn("＋ 性能", (_, _) => AddWidget(WidgetKind.SystemMonitor)));
+            widgets.Children.Add(addRow);
+            widgets.Children.Add(PageKit.Hint("组件贴在桌面上，可拖动、可收起。文件/天气/音乐三类还没移植到新界面。"));
+
+            var existing = App.Repo?.Widgets() ?? new();
+            if (existing.Count > 0)
+            {
+                widgets.Children.Add(PageKit.Divider());
+                foreach (var widget in existing)
+                {
+                    var captured = widget;
+                    var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                    row.Children.Add(PageKit.Btn("打开", (_, _) => App.OpenWidget(captured)));
+                    row.Children.Add(PageKit.Btn("删除", (_, _) =>
+                    {
+                        App.CloseWidget(captured.Id);
+                        App.Repo?.DeleteWidget(captured.Id);
+                        App.NotifyWidgetsChanged();
+                        App.Log($"删除组件「{captured.Name}」");
+                        Reload();
+                    }));
+                    widgets.Children.Add(PageKit.ActionRow(
+                        captured.Name,
+                        $"{KindName(captured.Kind)} · {(captured.IsVisible ? "显示中" : "已隐藏")}",
+                        row));
+                }
+            }
+            Host.Children.Add(PageKit.Card("桌面组件", widgets));
+
             // 最近更新的盒子（最常见的"找东西"入口）
             var recent = boxes.OrderByDescending(b => b.UpdatedAt).Take(5).ToList();
             if (recent.Count > 0)
@@ -121,6 +158,59 @@ public sealed partial class OverviewPage : Page
         }
         catch (Exception ex) { App.Log("批量显示/隐藏失败：" + ex); }
     }
+
+    /// <summary>从概览页新建一个桌面组件：错位摆放，建完立刻显示。</summary>
+    private void AddWidget(WidgetKind kind)
+    {
+        try
+        {
+            var count = App.Repo?.Widgets().Count ?? 0;
+            var widget = new WidgetRecord
+            {
+                Kind = kind,
+                Name = KindName(kind),
+                X = 120 + (count % 5) * 40,
+                Y = 120 + (count % 5) * 36,
+                Width = kind switch
+                {
+                    WidgetKind.Todo => 300,
+                    WidgetKind.QuickNote => 300,
+                    WidgetKind.SystemMonitor => 260,
+                    _ => 260
+                },
+                Height = kind switch
+                {
+                    WidgetKind.Todo => 380,
+                    WidgetKind.QuickNote => 320,
+                    WidgetKind.SystemMonitor => 180,
+                    _ => 150
+                },
+                IsVisible = true
+            };
+            App.Repo?.Upsert(widget);
+            App.OpenWidget(widget);
+            App.Log($"新建组件「{widget.Name}」（{kind}）");
+            App.NotifyWidgetsChanged();
+            Reload();
+        }
+        catch (Exception ex)
+        {
+            App.Log("新建组件失败：" + ex);
+            Host.Children.Add(PageKit.Card("新建组件失败", PageKit.Hint(ex.Message)));
+        }
+    }
+
+    private static string KindName(WidgetKind kind) => kind switch
+    {
+        WidgetKind.Glance => "概览",
+        WidgetKind.Todo => "待办",
+        WidgetKind.QuickNote => "便签",
+        WidgetKind.SystemMonitor => "性能",
+        WidgetKind.File => "文件",
+        WidgetKind.Weather => "天气",
+        WidgetKind.Music => "音乐",
+        _ => kind.ToString()
+    };
 
     private static void Navigate(string tag)
     {
