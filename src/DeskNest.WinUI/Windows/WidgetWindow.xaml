@@ -17,10 +17,14 @@
                        VerticalAlignment="Center" FontSize="12.5" FontWeight="SemiBold"
                        IsHitTestVisible="False" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <Button x:Name="CollapseButton" Content="—" Width="30" Height="22" Margin="0,0,4,0"
-                        FontSize="11" ToolTipService.ToolTip="收起 / 展开" />
-                <Button x:Name="CloseButton" Content="✕" Width="30" Height="22"
-                        FontSize="11" ToolTipService.ToolTip="隐藏这个组件" />
+                <Button x:Name="CollapseButton" Width="30" Height="22" Margin="0,0,4,0" Padding="0"
+                        Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="收起 / 展开">
+                    <FontIcon Glyph="&#xE70D;" FontSize="9" />
+                </Button>
+                <Button x:Name="CloseButton" Width="30" Height="22" Padding="0"
+                        Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="隐藏这个组件">
+                    <FontIcon Glyph="&#xE711;" FontSize="9" />
+                </Button>
             </StackPanel>
         </Grid>
 

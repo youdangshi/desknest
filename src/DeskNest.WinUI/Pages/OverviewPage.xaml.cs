@@ -86,9 +86,12 @@ public sealed partial class OverviewPage : Page
             addRow.Children.Add(PageKit.Btn("＋ 概览", (_, _) => AddWidget(WidgetKind.Glance), primary: true));
             addRow.Children.Add(PageKit.Btn("＋ 待办", (_, _) => AddWidget(WidgetKind.Todo)));
             addRow.Children.Add(PageKit.Btn("＋ 便签", (_, _) => AddWidget(WidgetKind.QuickNote)));
+            addRow.Children.Add(PageKit.Btn("＋ 文件", (_, _) => AddWidget(WidgetKind.File)));
+            addRow.Children.Add(PageKit.Btn("＋ 天气", (_, _) => AddWidget(WidgetKind.Weather)));
+            addRow.Children.Add(PageKit.Btn("＋ 音乐", (_, _) => AddWidget(WidgetKind.Music)));
             addRow.Children.Add(PageKit.Btn("＋ 性能", (_, _) => AddWidget(WidgetKind.SystemMonitor)));
             widgets.Children.Add(addRow);
-            widgets.Children.Add(PageKit.Hint("组件贴在桌面上，可拖动、可收起。文件/天气/音乐三类还没移植到新界面。"));
+            widgets.Children.Add(PageKit.Hint("组件贴在桌面上，可拖动、可收起。天气用 Open-Meteo（免费、无需 Key）；音乐是媒体键控制。"));
 
             var existing = App.Repo?.Widgets() ?? new();
             if (existing.Count > 0)
@@ -175,6 +178,7 @@ public sealed partial class OverviewPage : Page
                 {
                     WidgetKind.Todo => 300,
                     WidgetKind.QuickNote => 300,
+                    WidgetKind.File => 300,
                     WidgetKind.SystemMonitor => 260,
                     _ => 260
                 },
@@ -182,6 +186,9 @@ public sealed partial class OverviewPage : Page
                 {
                     WidgetKind.Todo => 380,
                     WidgetKind.QuickNote => 320,
+                    WidgetKind.File => 360,
+                    WidgetKind.Weather => 240,
+                    WidgetKind.Music => 170,
                     WidgetKind.SystemMonitor => 180,
                     _ => 150
                 },

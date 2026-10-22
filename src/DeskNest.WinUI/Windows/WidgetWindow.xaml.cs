@@ -220,7 +220,7 @@ public sealed partial class WidgetWindow : Window
         }
         _collapsed = collapsed;
         _widget.IsCollapsed = collapsed;
-        CollapseButton.Content = collapsed ? "▢" : "—";
+        if (CollapseButton.Content is FontIcon glyph) glyph.Glyph = collapsed ? "\uE70E" : "\uE70D";
         if (persist)
         {
             try { App.Repo?.Upsert(_widget); } catch (Exception ex) { App.Log("保存收起状态失败：" + ex.Message); }
@@ -249,9 +249,11 @@ public sealed partial class WidgetWindow : Window
                 case WidgetKind.Todo: BuildTodo(); break;
                 case WidgetKind.QuickNote: BuildNotes(); break;
                 case WidgetKind.SystemMonitor: BuildSystemMonitor(); break;
+                case WidgetKind.File: BuildFileWidget(); break;
+                case WidgetKind.Weather: BuildWeather(); break;
+                case WidgetKind.Music: BuildMusic(); break;
                 default:
                     Content.Children.Add(Text($"{_widget.Kind} 组件还没移植到新界面", 12, secondary: true));
-                    Content.Children.Add(Text("当前可用：概览、待办、便签、系统监视", 11.5, secondary: true));
                     break;
             }
             App.Log($"WidgetWindow[{_widget.Name}] content built: {_widget.Kind}");
@@ -282,6 +284,7 @@ public sealed partial class WidgetWindow : Window
 
     private void BuildGlance()
     {
+        Content.Children.Clear();
         Content.Children.Add(Text(DateTime.Now.ToString("M月d日 dddd"), 14, bold: true));
         _clockText = Text(DateTime.Now.ToString("HH:mm:ss"), 30, bold: true);
         Content.Children.Add(_clockText);
@@ -309,6 +312,7 @@ public sealed partial class WidgetWindow : Window
     // --- Todo：待办清单 ---
     private void BuildTodo()
     {
+        Content.Children.Clear();
         var input = new TextBox
         {
             PlaceholderText = "输入待办，回车添加…",
@@ -364,6 +368,7 @@ public sealed partial class WidgetWindow : Window
     // --- QuickNote：便签 ---
     private void BuildNotes()
     {
+        Content.Children.Clear();
         var addRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 6) };
         var input = new TextBox { PlaceholderText = "新便签标题，回车添加…", FontSize = 12, Width = 180 };
         input.KeyDown += (_, e) =>
@@ -415,6 +420,7 @@ public sealed partial class WidgetWindow : Window
 
     private void BuildSystemMonitor()
     {
+        Content.Children.Clear();
         _cpuText = Text("CPU —", 13, bold: true);
         _memText = Text("内存 —", 12, secondary: true);
         _netText = Text("网络 —", 12, secondary: true);
@@ -443,6 +449,194 @@ public sealed partial class WidgetWindow : Window
         if (bytesPerSec < 1024) return $"{bytesPerSec:0} B/s";
         if (bytesPerSec < 1024 * 1024) return $"{bytesPerSec / 1024:0} KB/s";
         return $"{bytesPerSec / 1024 / 1024:0.0} MB/s";
+    }
+
+    // --- File：绑定某个收纳盒的文件列表 ---
+    private void BuildFileWidget()
+    {
+        Content.Children.Clear();
+        if (App.Repo is null) { Content.Children.Add(Text("数据库未就绪", 12, secondary: true)); return; }
+
+        // 没绑盒子：列出盒子让用户选一个（WPF 版是拖进去绑的，这里点选更直接）
+        var box = _widget.BoxId is { } id ? App.Repo.Box(id) : null;
+        if (box is null)
+        {
+            Content.Children.Add(Text("选一个盒子来显示：", 12, secondary: true));
+            foreach (var candidate in App.Repo.Boxes().Take(8))
+            {
+                var captured = candidate;
+                var b = SmallButton(captured.Name, () =>
+                {
+                    _widget.BoxId = captured.Id;
+                    _widget.Name = captured.Name;
+                    TitleText.Text = captured.Name;
+                    try { App.Repo?.Upsert(_widget); } catch (Exception ex) { App.Log("组件绑定盒子失败：" + ex.Message); }
+                    BuildFileWidget();
+                });
+                b.HorizontalAlignment = HorizontalAlignment.Stretch;
+                b.Content = captured.Name;
+                Content.Children.Add(b);
+            }
+            return;
+        }
+
+        var head = new Grid();
+        head.Children.Add(Text(box.Name, 12.5, bold: true));
+        var refresh = SmallButton("刷新", BuildFileWidget);
+        refresh.HorizontalAlignment = HorizontalAlignment.Right;
+        head.Children.Add(refresh);
+        Content.Children.Add(head);
+
+        var items = App.Repo.Items(box.Id, box.Kind == BoxKind.Mapped).Take(40).ToList();
+        if (items.Count == 0) Content.Children.Add(Text("这个盒子还是空的", 11.5, secondary: true));
+
+        foreach (var item in items)
+        {
+            var captured = item;
+            var row = new Grid { ColumnSpacing = 8, Margin = new Thickness(0, 1, 0, 1) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var path = captured.StoredPath ?? captured.SourcePath ?? "";
+            var icon = string.IsNullOrEmpty(path) ? null : IconLoader.Get(path, 24);
+            if (icon is not null)
+                row.Children.Add(new Image { Source = icon, Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center });
+            else
+                row.Children.Add(new FontIcon { Glyph = "\uE8A5", FontSize = 14, Opacity = 0.7 });
+
+            var name = Text(captured.DisplayName, 12);
+            name.TextTrimming = TextTrimming.CharacterEllipsis;
+            name.MaxLines = 1;
+            name.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(name, 1);
+            row.Children.Add(name);
+
+            // 双击打开
+            row.DoubleTapped += (_, e) =>
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true }); }
+                catch (Exception ex) { App.Log("组件打开文件失败：" + ex.Message); }
+                e.Handled = true;
+            };
+            row.Tag = path;
+            Content.Children.Add(row);
+        }
+        Content.Children.Add(Text($"共 {items.Count} 项 · 双击打开", 10.5, secondary: true));
+    }
+
+    // --- Weather：Open-Meteo（免费、无需 Key） ---
+    private void BuildWeather()
+    {
+        Content.Children.Clear();
+        var city = App.Settings?.Get("weather.city", "深圳") ?? "深圳";
+        Content.Children.Add(Text("天气", 15, bold: true));
+        Content.Children.Add(Text($"城市：{city}", 11.5, secondary: true));
+
+        var summary = App.Settings?.Get("weather.summary", "") ?? "";
+        Content.Children.Add(Text(string.IsNullOrWhiteSpace(summary) ? "还没有数据，点「刷新」获取" : summary, 12));
+
+        var updated = App.Settings?.Get("weather.updated", "") ?? "";
+        if (!string.IsNullOrWhiteSpace(updated)) Content.Children.Add(Text(updated, 10.5, secondary: true));
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 6, 0, 0) };
+        row.Children.Add(SmallButton("刷新", async () => await RefreshWeatherAsync()));
+        row.Children.Add(SmallButton("设置城市", async () => await SetWeatherCityAsync()));
+        Content.Children.Add(row);
+    }
+
+    private async Task SetWeatherCityAsync()
+    {
+        var input = new TextBox { Text = App.Settings?.Get("weather.city", "深圳") ?? "深圳", PlaceholderText = "城市名称（中文即可）" };
+        var dialog = new ContentDialog
+        {
+            Title = "天气城市",
+            Content = input,
+            PrimaryButtonText = "保存并刷新",
+            CloseButtonText = "取消",
+            XamlRoot = Root.XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        var city = input.Text.Trim();
+        if (city.Length == 0) return;
+        App.Settings?.Set("weather.city", city);
+        App.Log($"组件：天气城市 -> {city}");
+        BuildWeather();
+        await RefreshWeatherAsync();
+    }
+
+    /// <summary>刷新天气（点「刷新」、设完城市、或自验脚本会调）。</summary>
+    public async Task RefreshWeatherAsync()
+    {
+        try
+        {
+            var city = App.Settings?.Get("weather.city", "深圳") ?? "深圳";
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var geo = await http.GetStringAsync(
+                "https://geocoding-api.open-meteo.com/v1/search?count=1&language=zh&name=" + Uri.EscapeDataString(city));
+            using var doc = System.Text.Json.JsonDocument.Parse(geo);
+            if (!doc.RootElement.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
+            {
+                App.Settings?.Set("weather.summary", "找不到这个城市，换个名字试试");
+                BuildWeather();
+                return;
+            }
+            var lat = results[0].GetProperty("latitude").GetDouble();
+            var lon = results[0].GetProperty("longitude").GetDouble();
+            var forecast = await http.GetStringAsync(
+                $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}" +
+                "&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min" +
+                "&timezone=auto&forecast_days=3");
+            using var fdoc = System.Text.Json.JsonDocument.Parse(forecast);
+            var cur = fdoc.RootElement.GetProperty("current");
+            var temp = cur.GetProperty("temperature_2m").GetDouble();
+            var wind = cur.GetProperty("wind_speed_10m").GetDouble();
+            var daily = fdoc.RootElement.GetProperty("daily");
+            var maxs = daily.GetProperty("temperature_2m_max");
+            var mins = daily.GetProperty("temperature_2m_min");
+            var times = daily.GetProperty("time");
+
+            var summary = $"{temp:0.#}°C · 风速 {wind:0.#} km/h\n";
+            for (var i = 0; i < Math.Min(3, times.GetArrayLength()); i++)
+            {
+                var day = times[i].GetString() ?? "";
+                summary += $"{day}  {mins[i].GetDouble():0.#}~{maxs[i].GetDouble():0.#}°C\n";
+            }
+            App.Settings?.Set("weather.summary", summary.TrimEnd());
+            App.Settings?.Set("weather.updated", "更新于 " + DateTime.Now.ToString("MM-dd HH:mm"));
+            App.Log($"组件：天气已更新（{city} {temp:0.#}°C）");
+            BuildWeather();
+        }
+        catch (Exception ex)
+        {
+            App.Settings?.Set("weather.summary", "更新失败：" + ex.Message);
+            App.Log("天气更新失败：" + ex);
+            BuildWeather();
+        }
+    }
+
+    // --- Music：媒体键 ---
+    private void BuildMusic()
+    {
+        Content.Children.Clear();
+        Content.Children.Add(Text("媒体控制", 15, bold: true));
+        Content.Children.Add(Text("控制当前播放器，不需要任何权限", 11, secondary: true));
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 4) };
+        row.Children.Add(SmallButton("⏮", () => SendMediaKey(0xB1)));
+        row.Children.Add(SmallButton("⏯", () => SendMediaKey(0xB3)));
+        row.Children.Add(SmallButton("⏭", () => SendMediaKey(0xB0)));
+        Content.Children.Add(row);
+        Content.Children.Add(Text("提示：显示封面/进度要接系统媒体会话（SMTC），后续再做。", 10.5, secondary: true));
+    }
+
+    private static void SendMediaKey(int vk)
+    {
+        try
+        {
+            MediaKeys.Send(vk);
+            App.Log($"组件：媒体键 0x{vk:X}");
+        }
+        catch (Exception ex) { App.Log("媒体键失败：" + ex.Message); }
     }
 
     // ---------- 小工具 ----------

@@ -332,7 +332,7 @@ public sealed partial class BoxWindow : Window
         }
         _rolledUp = rolled;
         _box.RolledUp = rolled;
-        if (RollupButton.Content is FontIcon glyph) glyph.Glyph = rolled ? "\uE70D" : "\uE70E";
+        if (RollupButton.Content is FontIcon glyph) glyph.Glyph = rolled ? "\uE70E" : "\uE70D";
         MenuRollup.Text = rolled ? "展开" : "卷起";
         if (persist)
         {

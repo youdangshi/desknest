@@ -235,6 +235,7 @@ public partial class App : Application
                     win.Activate();
                 }
 
+
             }
             catch (Exception ex)
             {
