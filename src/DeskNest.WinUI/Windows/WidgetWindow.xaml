@@ -7,6 +7,27 @@
     <!-- 桌面组件 = 自绘标题栏（名称 + 卷起 + 隐藏）+ 内容区。系统标题栏在 code-behind 里摘掉。 -->
     <Grid x:Name="Root" Background="{ThemeResource DnCardBg}"
           BorderBrush="{ThemeResource DnCardStroke}" BorderThickness="1" CornerRadius="12">
+
+        <!-- 右键菜单：关闭 / 重置位置 / 绑定盒子（只有文件组件能绑） -->
+        <Grid.ContextFlyout>
+            <MenuFlyout>
+                <MenuFlyoutItem x:Name="MenuBind" Text="绑定盒子…">
+                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B7;" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Name="MenuResetPos" Text="重置位置">
+                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7A7;" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="MenuRename" Text="重命名…">
+                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AC;" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="MenuClose" Text="关闭组件">
+                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7E8;" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+            </MenuFlyout>
+        </Grid.ContextFlyout>
+
         <Grid.RowDefinitions>
             <RowDefinition Height="34" />
             <RowDefinition Height="*" />

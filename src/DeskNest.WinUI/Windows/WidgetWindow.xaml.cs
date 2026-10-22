@@ -73,6 +73,7 @@ public sealed partial class WidgetWindow : Window
         CloseButton.Click += (_, _) => HideWidget();
         CollapseButton.Click += (_, _) => ToggleCollapse();
         WireDrag();
+        WireMenu();
         BuildContent();
 
         _tick.Tick += (_, _) => TickContent();
@@ -128,6 +129,136 @@ public sealed partial class WidgetWindow : Window
                     ? _widget.CornerRadius : App.CurrentCorner);
         }
         catch (Exception ex) { App.Log("组件外观应用失败：" + ex.Message); }
+    }
+
+    // ---------- 右键菜单 ----------
+
+    private void WireMenu()
+    {
+        // 「绑定盒子」只对文件组件有意义，其它类型藏起来（别给不存在的功能留入口）
+        MenuBind.Visibility = _widget.Kind == WidgetKind.File ? Visibility.Visible : Visibility.Collapsed;
+
+        MenuBind.Click += async (_, _) => await BindBoxAsync();
+        MenuResetPos.Click += (_, _) => ResetPosition();
+        MenuRename.Click += async (_, _) => await RenameAsync();
+        MenuClose.Click += (_, _) =>
+        {
+            App.Log($"组件[{_widget.Name}] 右键关闭");
+            HideWidget();
+        };
+
+        var itemCount = (Root.ContextFlyout as MenuFlyout)?.Items.Count ?? 0;
+        App.Log($"组件[{_widget.Name}] 菜单就绪：{itemCount} 项，绑定={MenuBind.Visibility}");
+    }
+
+    /// <summary>绑定到某个收纳盒（文件组件用）。绑定信息写库，重启还在。</summary>
+    private async Task BindBoxAsync()
+    {
+        if (App.Repo is null) return;
+        var boxes = App.Repo.Boxes();
+        if (boxes.Count == 0)
+        {
+            await new ContentDialog
+            {
+                Title = "还没有收纳盒",
+                Content = "先去「收纳盒」页建一个，再回来绑定。",
+                CloseButtonText = "知道了",
+                XamlRoot = Root.XamlRoot
+            }.ShowAsync();
+            return;
+        }
+
+        var list = new ListView { Height = 220, SelectionMode = ListViewSelectionMode.Single };
+        foreach (var box in boxes)
+        {
+            var count = 0;
+            try { count = App.Repo.Items(box.Id, box.Kind == BoxKind.Mapped).Count; } catch { }
+            var item = new ListViewItem
+            {
+                Content = $"{box.Name}    （{count} 项）",
+                Tag = box,
+                IsSelected = box.Id == _widget.BoxId
+            };
+            list.Items.Add(item);
+        }
+        if (list.SelectedItem is null && list.Items.Count > 0) list.SelectedIndex = 0;
+
+        var dialog = new ContentDialog
+        {
+            Title = "绑定盒子",
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock { Text = "这个组件要显示哪个盒子里的文件？", FontSize = 12.5, Opacity = 0.75 },
+                    list
+                }
+            },
+            PrimaryButtonText = "绑定",
+            CloseButtonText = "取消",
+            XamlRoot = Root.XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (list.SelectedItem is not ListViewItem selected || selected.Tag is not BoxRecord box2) return;
+
+        _widget.BoxId = box2.Id;
+        _widget.Name = box2.Name;
+        TitleText.Text = box2.Name;
+        Title = box2.Name;
+        try { App.Repo.Upsert(_widget); } catch (Exception ex) { App.Log("保存绑定的盒子失败：" + ex.Message); }
+        App.Log($"组件[{_widget.Name}] 绑定盒子 -> {box2.Name}#{box2.Id}");
+        BuildFileWidget();
+        App.NotifyWidgetsChanged();
+    }
+
+    /// <summary>回到默认位置：主屏工作区水平居中、靠上 80 DIP。位置写库。</summary>
+    private void ResetPosition()
+    {
+        try
+        {
+            var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
+            if (scale <= 0) scale = 1.0;
+            var width = AppWindow.Size.Width;
+            var height = AppWindow.Size.Height;
+
+            var x = 200.0;
+            var y = 140.0;
+            if (Monitors.Primary() is { } screen)
+            {
+                x = screen.WorkX + (screen.WorkWidth - width) / 2.0;
+                y = screen.WorkY + 80 * scale;
+            }
+            AppWindow.Move(new global::Windows.Graphics.PointInt32((int)x, (int)y));
+
+            _widget.X = Math.Round(AppWindow.Position.X / scale, 1);
+            _widget.Y = Math.Round(AppWindow.Position.Y / scale, 1);
+            try { App.Repo?.Upsert(_widget); } catch (Exception ex) { App.Log("保存重置位置失败：" + ex.Message); }
+            App.Log($"组件[{_widget.Name}] 重置位置 -> {_widget.X},{_widget.Y} DIP");
+        }
+        catch (Exception ex) { App.Log("重置位置失败：" + ex); }
+    }
+
+    private async Task RenameAsync()
+    {
+        var input = new TextBox { Text = _widget.Name, PlaceholderText = "组件名称" };
+        var dialog = new ContentDialog
+        {
+            Title = "重命名组件",
+            Content = input,
+            PrimaryButtonText = "保存",
+            CloseButtonText = "取消",
+            XamlRoot = Root.XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        var name = input.Text.Trim();
+        if (name.Length == 0 || name == _widget.Name) return;
+        _widget.Name = name;
+        Title = name;
+        TitleText.Text = name;
+        try { App.Repo?.Upsert(_widget); } catch (Exception ex) { App.Log("保存组件名失败：" + ex.Message); }
+        App.NotifyWidgetsChanged();
+        App.Log($"组件重命名 -> {name}");
     }
 
     // ---------- 拖动 ----------
