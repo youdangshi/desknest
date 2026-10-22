@@ -432,7 +432,10 @@ public sealed partial class WidgetWindow : Window
     {
         var presenter = AppWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
         var titleDip = TitleBarGrid.ActualHeight > 0 ? TitleBarGrid.ActualHeight : 34;
-        var titleHeight = (int)Math.Ceiling(titleDip * _scale) + 1;
+        // 客户区比窗口小一圈不可见边框（Win10 的 WS_THICKFRAME），必须把这部分补上，
+        // 否则客户区比标题栏还矮，最后一行字被裁（用户反馈过两次，这次按实测补）。
+        var frame = WindowMetrics.FrameInsets(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        var titleHeight = (int)Math.Ceiling((titleDip + 2) * _scale) + frame.dy;
         if (collapsed)
         {
             _expandedHeight = AppWindow.Size.Height;

@@ -110,7 +110,8 @@ internal static class WindowLook
             var pos = window.AppWindow.Position;
             var size = window.AppWindow.Size;
             // 不透明度越高 → 主题色叠得越浓（越像实心），越低 → 越透出壁纸
-            var tintAlpha = Math.Clamp(0.22 + value * 0.38, 0.22, 0.60);
+            // 洗色很重（八成以上）：只留一成多的壁纸纹理，避免"顶部一条彩色带"和角落色边
+            var tintAlpha = Math.Clamp(0.78 + value * 0.14, 0.78, 0.92);
             var image = await WallpaperGlass.BuildAsync(pos.X, pos.Y, size.Width, size.Height, tint, tintAlpha);
             if (image is null)
             {

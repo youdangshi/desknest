@@ -320,7 +320,10 @@ public sealed partial class BoxWindow : Window
         var presenter = AppWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
         // 用标题栏实测高度（XAML 里是 38），写死 36 会把标题裁掉一条——用户反馈「收起时标题显示不全」
         var titleDip = TitleBarGrid.ActualHeight > 0 ? TitleBarGrid.ActualHeight : 38;
-        var titleHeight = (int)Math.Ceiling(titleDip * _scale) + 1;
+        // 客户区比窗口小一圈不可见边框（Win10 的 WS_THICKFRAME），必须把这部分补上，
+        // 否则客户区比标题栏还矮，最后一行字被裁（用户反馈过两次，这次按实测补）。
+        var frame = WindowMetrics.FrameInsets(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        var titleHeight = (int)Math.Ceiling((titleDip + 2) * _scale) + frame.dy;
         if (rolled)
         {
             _expandedHeight = AppWindow.Size.Height;

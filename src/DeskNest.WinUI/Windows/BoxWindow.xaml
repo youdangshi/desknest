@@ -35,15 +35,15 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 标题栏：图标 + 名称 + 数量胶囊；操作按钮平时淡出，鼠标移上来才显形。
-             外面套一层带圆角的 Border，靠它裁掉标题栏底色在四角露出的直角。 -->
-        <Border CornerRadius="13,13,0,0" Background="{ThemeResource DnSubtleBg}">
-        <Grid x:Name="TitleBarGrid" Background="{ThemeResource DnSubtleBg}">
+        <!-- 标题栏：透明底（整窗已有洗色），底部一条 1px 细线分隔；操作按钮平时淡出。 -->
+        <Grid x:Name="TitleBarGrid" Background="Transparent">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
+
+            <Border Grid.ColumnSpan="3" VerticalAlignment="Bottom" Height="1" Background="{ThemeResource DnDivider}" />
 
             <FontIcon Glyph="&#xE8B7;" FontSize="11" Margin="12,0,8,0"
                       VerticalAlignment="Center" Opacity="0.6" IsHitTestVisible="False" />
@@ -70,9 +70,8 @@
                 </Button>
             </StackPanel>
         </Grid>
-        </Border>
         <Grid Grid.Row="1">
-            <GridView x:Name="ItemList" Background="{ThemeResource DnGlassSurface}" IsItemClickEnabled="True"
+            <GridView x:Name="ItemList" Background="Transparent" IsItemClickEnabled="True"
                       SelectionMode="Single" Padding="6,4,6,8"
                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                 <GridView.ItemsPanel>

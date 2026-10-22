@@ -244,6 +244,7 @@ public partial class App : Application
                 // P5：恢复显示中的桌面组件
                 var widgets = Repo?.Widgets().Where(w => w.IsVisible).ToList() ?? new();
                 Log($"widgets in db: {widgets.Count}");
+
                 foreach (var widget in widgets)
                 {
                     var win = new Windows.WidgetWindow(widget);
