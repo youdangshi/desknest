@@ -250,6 +250,7 @@ public partial class App : Application
                     WidgetWindows.Add(win);
                     win.Activate();
                 }
+
             }
             catch (Exception ex)
             {

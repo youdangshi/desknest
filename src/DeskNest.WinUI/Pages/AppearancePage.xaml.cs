@@ -62,8 +62,9 @@ public sealed partial class AppearancePage : Page
         _materialBox = new ComboBox { MinWidth = 240, HorizontalAlignment = HorizontalAlignment.Stretch };
         foreach (var (label, value) in new[]
                  {
-                     ("亚克力（磨砂模糊）", Windows.WindowLook.MaterialAcrylic),
-                     ("云母（壁纸色调）", Windows.WindowLook.MaterialMica),
+                     ("磨砂（模拟·壁纸模糊，Win10 可用）", Windows.WindowLook.MaterialGlass),
+                     ("亚克力（系统材质，需 Win11）", Windows.WindowLook.MaterialAcrylic),
+                     ("云母（系统材质，需 Win11）", Windows.WindowLook.MaterialMica),
                      ("纯色（不透明）", Windows.WindowLook.MaterialSolid)
                  })
         {
@@ -104,12 +105,10 @@ public sealed partial class AppearancePage : Page
 
         if (!Windows.WindowLook.IsTransparencySupported)
         {
-            // Win10：WinUI 3 不支持窗口级透明/磨砂，控件禁用 + 说明，别让用户白拖
-            _materialBox.IsEnabled = false;
-            _opacitySlider.IsEnabled = false;
             col.Children.Add(PageKit.Hint(
-                "当前系统是 Windows 10：WinUI 3 的窗口透明与磨砂只在 Windows 11 生效（桌面版 WPF 是靠 AllowsTransparency 做的，WinUI 没有等价能力）。" +
-                "设置会保存，升级到 Windows 11 后自动生效。"));
+                "当前系统是 Windows 10：亚克力/云母只在 Windows 11 生效（WinUI 3 无窗口级透明，" +
+                "桌面版 WPF 的 AllowsTransparency 没有等价能力）。想要毛玻璃观感请选「磨砂（模拟）」——" +
+                "它把窗口背后的壁纸模糊后铺成底色，任何系统都能用。"));
         }
 
         return PageKit.Card("材质与不透明度", col);

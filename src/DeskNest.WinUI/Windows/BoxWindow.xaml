@@ -74,7 +74,7 @@
         </Grid>
         </Border>
         <Grid Grid.Row="1">
-            <GridView x:Name="ItemList" Background="Transparent" IsItemClickEnabled="True"
+            <GridView x:Name="ItemList" Background="{ThemeResource DnGlassSurface}" IsItemClickEnabled="True"
                       SelectionMode="Single" Padding="6,4,6,8"
                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                 <GridView.ItemsPanel>
@@ -99,7 +99,7 @@
             </GridView>
 
             <!-- 空态：虚线框（容器空着的时候别只是一片白） -->
-            <Border x:Name="EmptyState" IsHitTestVisible="False"
+            <Border x:Name="EmptyState" IsHitTestVisible="False" Background="Transparent"
                     Margin="16" CornerRadius="10" BorderThickness="1.5"
                     BorderBrush="{ThemeResource DnCardStroke}" Visibility="Collapsed">
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">

@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using DeskNest.Native.Win32;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -21,6 +22,8 @@ internal static class WindowLook
     public const string MaterialAcrylic = "Acrylic";
     public const string MaterialMica = "Mica";
     public const string MaterialSolid = "Solid";
+    /// <summary>模拟磨砂：把窗口背后的壁纸模糊后铺成底色，Win10 也能用。</summary>
+    public const string MaterialGlass = "Glass";
 
     /// <summary>
     /// 当前系统能不能做窗口级透明/磨砂。
@@ -43,10 +46,23 @@ internal static class WindowLook
             var tint = CardColor(theme);
             var value = Math.Clamp(opacity, 0.35, 1.0);
 
-            // 系统不支持时强制纯色：宁可看起来普通，也不要给用户一个"拖了半天没反应"的滑块
-            var effective = IsTransparencySupported ? material : MaterialSolid;
-            if (effective != material)
-                App.Log($"系统不支持窗口透明（build {Environment.OSVersion.Version.Build}），材质降级为纯色");
+            // 系统不支持真材质时，自动换成"模拟磨砂"——用户要的是毛玻璃观感，
+            // 不是"选了亚克力结果变成一块纯色"。
+            var effective = material;
+            if (!IsTransparencySupported && material is MaterialAcrylic or MaterialMica)
+            {
+                effective = MaterialGlass;
+                App.Log($"系统不支持系统材质（build {Environment.OSVersion.Version.Build}），亚克力/云母 -> 模拟磨砂");
+            }
+
+            // 模拟磨砂：任何系统都能用（不依赖系统合成）
+            if (effective == MaterialGlass)
+            {
+                root.Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, tint.R, tint.G, tint.B));
+                _ = ApplyGlassAsync(window, root, value, tint);
+                App.Log($"外观：材质=Glass（模拟磨砂）不透明度={value:0.00} 主题={theme}");
+                return;
+            }
 
             try
             {
@@ -84,6 +100,28 @@ internal static class WindowLook
             App.Log($"外观：请求={material} 实际={effective} 底色alpha={alpha} 不透明度={value:0.00} 主题={theme}");
         }
         catch (Exception ex) { App.Log("应用窗口外观失败：" + ex.Message); }
+    }
+
+    /// <summary>异步生成磨砂壁纸并铺到根元素上（窗口位置变了要重算，见调用点）。</summary>
+    private static async Task ApplyGlassAsync(Window window, Panel root, double value, global::Windows.UI.Color tint)
+    {
+        try
+        {
+            var pos = window.AppWindow.Position;
+            var size = window.AppWindow.Size;
+            // 不透明度越高 → 主题色叠得越浓（越像实心），越低 → 越透出壁纸
+            var tintAlpha = Math.Clamp(0.10 + value * 0.45, 0.10, 0.60);
+            var image = await WallpaperGlass.BuildAsync(pos.X, pos.Y, size.Width, size.Height, tint, tintAlpha);
+            if (image is null)
+            {
+                App.Log("磨砂底色生成失败，保留纯色");
+                return;
+            }
+            // 窗口在生成期间被关掉/移动了就丢弃结果
+            if (root.XamlRoot is null) return;
+            root.Background = new ImageBrush { ImageSource = image, Stretch = Stretch.Fill };
+        }
+        catch (Exception ex) { App.Log("应用磨砂底色失败：" + ex.Message); }
     }
 
     /// <summary>从 App.xaml 的 Dn* 主题字典里取卡片底色。</summary>

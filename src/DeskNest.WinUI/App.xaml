@@ -24,6 +24,7 @@
                     <SolidColorBrush x:Key="DnCardStroke" Color="#1AFFFFFF" />
                     <SolidColorBrush x:Key="DnDivider" Color="#1AFFFFFF" />
                     <SolidColorBrush x:Key="DnSubtleBg" Color="#14FFFFFF" />
+                    <SolidColorBrush x:Key="DnGlassSurface" Color="#8C1F1F1F" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="DnPageBg" Color="#FFF3F3F3" />
@@ -31,6 +32,7 @@
                     <SolidColorBrush x:Key="DnCardStroke" Color="#14000000" />
                     <SolidColorBrush x:Key="DnDivider" Color="#14000000" />
                     <SolidColorBrush x:Key="DnSubtleBg" Color="#0A000000" />
+                    <SolidColorBrush x:Key="DnGlassSurface" Color="#8CFFFFFF" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>

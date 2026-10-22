@@ -52,7 +52,7 @@
             </StackPanel>
         </Grid>
 
-        <ScrollViewer x:Name="ContentScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+        <ScrollViewer x:Name="ContentScroll" Grid.Row="1" Background="{ThemeResource DnGlassSurface}" VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
             <StackPanel x:Name="Content" Padding="12,8,12,12" Spacing="6" />
         </ScrollViewer>

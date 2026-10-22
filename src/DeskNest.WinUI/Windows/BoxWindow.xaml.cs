@@ -318,7 +318,9 @@ public sealed partial class BoxWindow : Window
     private void SetRolledUp(bool rolled, bool persist)
     {
         var presenter = AppWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
-        var titleHeight = (int)Math.Round(36 * _scale);
+        // 用标题栏实测高度（XAML 里是 38），写死 36 会把标题裁掉一条——用户反馈「收起时标题显示不全」
+        var titleDip = TitleBarGrid.ActualHeight > 0 ? TitleBarGrid.ActualHeight : 38;
+        var titleHeight = (int)Math.Ceiling(titleDip * _scale) + 1;
         if (rolled)
         {
             _expandedHeight = AppWindow.Size.Height;

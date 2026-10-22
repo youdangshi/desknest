@@ -168,8 +168,9 @@ public sealed partial class WidgetWindow : Window
         var materialBox = new ComboBox { MinWidth = 220, IsEnabled = overrideLook };
         foreach (var (label, value) in new[]
                  {
-                     ("亚克力（磨砂模糊）", WindowLook.MaterialAcrylic),
-                     ("云母（壁纸色调）", WindowLook.MaterialMica),
+                     ("磨砂（模拟·壁纸模糊，Win10 可用）", WindowLook.MaterialGlass),
+                     ("亚克力（系统材质，需 Win11）", WindowLook.MaterialAcrylic),
+                     ("云母（系统材质，需 Win11）", WindowLook.MaterialMica),
                      ("纯色（不透明）", WindowLook.MaterialSolid)
                  })
         {
@@ -205,14 +206,10 @@ public sealed partial class WidgetWindow : Window
 
         if (!WindowLook.IsTransparencySupported)
         {
-            // Win10 实测：WinUI 3 做不了窗口级透明/磨砂。与其给个拖了没反应的滑块，不如直说。
-            materialBox.IsEnabled = false;
-            slider.IsEnabled = false;
-            follow.IsEnabled = false;
             panel.Children.Add(new TextBlock
             {
-                Text = "当前系统是 Windows 10：WinUI 3 不支持窗口级透明与磨砂（Win11 才支持）。"
-                     + "这两个选项会保存下来，升级到 Windows 11 后自动生效。",
+                Text = "当前系统是 Windows 10：亚克力/云母只在 Windows 11 生效（选中会退化为纯色）。"
+                     + "想要毛玻璃观感请选「磨砂（模拟）」——它把窗口背后的壁纸模糊后铺成底色，任何系统都能用。",
                 FontSize = 10.5, Opacity = 0.6, TextWrapping = TextWrapping.Wrap
             });
         }
@@ -220,7 +217,7 @@ public sealed partial class WidgetWindow : Window
         {
             panel.Children.Add(new TextBlock
             {
-                Text = "材质需要系统开启「透明效果」，关闭时会退化成纯色。",
+                Text = "「磨砂（模拟）」跨系统一致；亚克力/云母由系统合成，需要系统开启「透明效果」。",
                 FontSize = 10.5, Opacity = 0.5, TextWrapping = TextWrapping.Wrap
             });
         }
@@ -434,7 +431,8 @@ public sealed partial class WidgetWindow : Window
     private void SetCollapsed(bool collapsed, bool persist)
     {
         var presenter = AppWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
-        var titleHeight = (int)Math.Round(34 * _scale);
+        var titleDip = TitleBarGrid.ActualHeight > 0 ? TitleBarGrid.ActualHeight : 34;
+        var titleHeight = (int)Math.Ceiling(titleDip * _scale) + 1;
         if (collapsed)
         {
             _expandedHeight = AppWindow.Size.Height;
