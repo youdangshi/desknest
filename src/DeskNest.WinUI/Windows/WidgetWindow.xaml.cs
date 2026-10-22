@@ -127,6 +127,13 @@ public sealed partial class WidgetWindow : Window
             Root.CornerRadius = new CornerRadius(
                 _widget.StyleScope == StyleScope.Override && _widget.CornerRadius > 0
                     ? _widget.CornerRadius : App.CurrentCorner);
+
+            // 材质与透明度：单盒设成"单独样式"就用它自己的，否则跟全局
+            var overrideLook = _widget.StyleScope == StyleScope.Override;
+            var material = overrideLook && !string.IsNullOrWhiteSpace(_widget.Material)
+                ? _widget.Material : App.CurrentMaterial;
+            var opacity = overrideLook ? _widget.Opacity : App.CurrentOpacity;
+            WindowLook.Apply(this, Root, opacity, material);
         }
         catch (Exception ex) { App.Log("组件外观应用失败：" + ex.Message); }
     }
@@ -140,6 +147,7 @@ public sealed partial class WidgetWindow : Window
 
         MenuBind.Click += async (_, _) => await BindBoxAsync();
         MenuResetPos.Click += (_, _) => ResetPosition();
+        MenuLook.Click += async (_, _) => await ShowLookDialogAsync();
         MenuRename.Click += async (_, _) => await RenameAsync();
         MenuClose.Click += (_, _) =>
         {
@@ -149,6 +157,97 @@ public sealed partial class WidgetWindow : Window
 
         var itemCount = (Root.ContextFlyout as MenuFlyout)?.Items.Count ?? 0;
         App.Log($"组件[{_widget.Name}] 菜单就绪：{itemCount} 项，绑定={MenuBind.Visibility}");
+    }
+
+    /// <summary>单个组件的外观：材质 + 透明度。保存后把这个组件标成"单独样式"并立即生效。</summary>
+    private async Task ShowLookDialogAsync()
+    {
+        var overrideLook = _widget.StyleScope == StyleScope.Override;
+
+        var follow = new CheckBox { Content = "跟随全局外观", IsChecked = !overrideLook, FontSize = 12.5 };
+        var materialBox = new ComboBox { MinWidth = 220, IsEnabled = overrideLook };
+        foreach (var (label, value) in new[]
+                 {
+                     ("亚克力（磨砂模糊）", WindowLook.MaterialAcrylic),
+                     ("云母（壁纸色调）", WindowLook.MaterialMica),
+                     ("纯色（不透明）", WindowLook.MaterialSolid)
+                 })
+        {
+            materialBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+        }
+        var currentMaterial = overrideLook ? _widget.Material : App.CurrentMaterial;
+        foreach (var item in materialBox.Items.OfType<ComboBoxItem>())
+            if ((item.Tag as string) == currentMaterial) { materialBox.SelectedItem = item; break; }
+        if (materialBox.SelectedItem is null) materialBox.SelectedIndex = 0;
+
+        var opacity = overrideLook ? _widget.Opacity : App.CurrentOpacity;
+        var opacityValue = new TextBlock { Text = $"{opacity:0.00}", FontSize = 12, MinWidth = 40, Opacity = 0.75 };
+        var slider = new Slider
+        {
+            Minimum = 0.35, Maximum = 1.0, StepFrequency = 0.05,
+            Value = Math.Clamp(opacity, 0.35, 1.0), IsEnabled = overrideLook, Width = 200
+        };
+        slider.ValueChanged += (_, e) => opacityValue.Text = $"{e.NewValue:0.00}";
+
+        follow.Checked += (_, _) => { materialBox.IsEnabled = false; slider.IsEnabled = false; };
+        follow.Unchecked += (_, _) => { materialBox.IsEnabled = true; slider.IsEnabled = true; };
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        row.Children.Add(slider);
+        row.Children.Add(opacityValue);
+
+        var panel = new StackPanel { Spacing = 8, MinWidth = 320 };
+        panel.Children.Add(follow);
+        panel.Children.Add(new TextBlock { Text = "材质", FontSize = 12, Opacity = 0.72 });
+        panel.Children.Add(materialBox);
+        panel.Children.Add(new TextBlock { Text = "不透明度（整个组件一起变淡）", FontSize = 12, Opacity = 0.72 });
+        panel.Children.Add(row);
+
+        if (!WindowLook.IsTransparencySupported)
+        {
+            // Win10 实测：WinUI 3 做不了窗口级透明/磨砂。与其给个拖了没反应的滑块，不如直说。
+            materialBox.IsEnabled = false;
+            slider.IsEnabled = false;
+            follow.IsEnabled = false;
+            panel.Children.Add(new TextBlock
+            {
+                Text = "当前系统是 Windows 10：WinUI 3 不支持窗口级透明与磨砂（Win11 才支持）。"
+                     + "这两个选项会保存下来，升级到 Windows 11 后自动生效。",
+                FontSize = 10.5, Opacity = 0.6, TextWrapping = TextWrapping.Wrap
+            });
+        }
+        else
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "材质需要系统开启「透明效果」，关闭时会退化成纯色。",
+                FontSize = 10.5, Opacity = 0.5, TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "组件外观",
+            Content = panel,
+            PrimaryButtonText = "保存",
+            CloseButtonText = "取消",
+            XamlRoot = Root.XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        if (follow.IsChecked == true)
+        {
+            _widget.StyleScope = StyleScope.Inherit;
+        }
+        else
+        {
+            _widget.StyleScope = StyleScope.Override;
+            _widget.Material = (materialBox.SelectedItem as ComboBoxItem)?.Tag as string ?? WindowLook.MaterialAcrylic;
+            _widget.Opacity = Math.Round(slider.Value, 2);
+        }
+        try { App.Repo?.Upsert(_widget); } catch (Exception ex) { App.Log("保存组件外观失败：" + ex.Message); }
+        ApplyLook();
+        App.Log($"组件[{_widget.Name}] 外观 -> {(overrideLook ? "" : "")}{_widget.StyleScope}/{_widget.Material}/{_widget.Opacity:0.00}");
     }
 
     /// <summary>绑定到某个收纳盒（文件组件用）。绑定信息写库，重启还在。</summary>

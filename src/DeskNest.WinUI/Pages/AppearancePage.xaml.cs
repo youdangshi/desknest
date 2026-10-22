@@ -45,8 +45,74 @@ public sealed partial class AppearancePage : Page
         Host.Children.Add(PageKit.PageTitle("外观与主题"));
         Host.Children.Add(PageKit.PageIntro("配色与圆角即时生效，盒子窗口和主窗口一起变。设置与桌面版共用，换回桌面版也是同一套。"));
         Host.Children.Add(MakeSettingsCard());
+        Host.Children.Add(MakeMaterialCard());
         Host.Children.Add(MakePreviewCard());
-        Host.Children.Add(PageKit.Hint("透明度与材质（亚克力/云母）在 WinUI 下属于窗口级合成，调根元素透明度会把文字一起变淡，P4 暂未开放；需要请用桌面版设置。"));
+        Host.Children.Add(PageKit.Hint("材质由系统合成：Windows 11 支持亚克力与云母；Windows 10 上 WinUI 3 无法做窗口透明，会自动按纯色渲染。"));
+    }
+
+    private ComboBox? _materialBox;
+    private Slider? _opacitySlider;
+    private TextBlock? _opacityValue;
+
+    /// <summary>材质 + 不透明度：盒子与组件共用（theme.desktop.material / opacity）。</summary>
+    private UIElement MakeMaterialCard()
+    {
+        var col = PageKit.Column(14);
+
+        _materialBox = new ComboBox { MinWidth = 240, HorizontalAlignment = HorizontalAlignment.Stretch };
+        foreach (var (label, value) in new[]
+                 {
+                     ("亚克力（磨砂模糊）", Windows.WindowLook.MaterialAcrylic),
+                     ("云母（壁纸色调）", Windows.WindowLook.MaterialMica),
+                     ("纯色（不透明）", Windows.WindowLook.MaterialSolid)
+                 })
+        {
+            _materialBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+        }
+        _materialBox.SelectionChanged += (_, _) =>
+        {
+            if (_syncing) return;
+            if (_materialBox.SelectedItem is not ComboBoxItem it) return;
+            var value = it.Tag as string ?? Windows.WindowLook.MaterialAcrylic;
+            if (App.Settings?.Get(App.KeyMaterial, Windows.WindowLook.MaterialAcrylic) == value) return;
+            App.Settings?.Set(App.KeyMaterial, value);
+            ApplyNow($"材质 → {it.Content}");
+        };
+        col.Children.Add(PageKit.Label("材质"));
+        col.Children.Add(_materialBox);
+
+        var row = new Grid { ColumnSpacing = 12 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        _opacitySlider = new Slider { Minimum = 0.35, Maximum = 1.0, StepFrequency = 0.05, VerticalAlignment = VerticalAlignment.Center };
+        _opacityValue = new TextBlock { FontSize = 12.5, MinWidth = 40, TextAlignment = TextAlignment.Right, Opacity = 0.75, VerticalAlignment = VerticalAlignment.Center };
+        _opacitySlider.ValueChanged += (_, e) =>
+        {
+            if (_syncing) return;
+            var value = Math.Round(e.NewValue, 2);
+            if (_opacityValue is not null) _opacityValue.Text = $"{value:0.00}";
+            if (Math.Abs((App.Settings?.Get(App.KeyOpacity, 0.95) ?? 0.95) - value) < 0.001) return;
+            App.Settings?.Set(App.KeyOpacity, value);
+            ApplyNow($"不透明度 → {value:0.00}");
+        };
+        row.Children.Add(_opacitySlider);
+        Grid.SetColumn(_opacityValue, 1);
+        row.Children.Add(_opacityValue);
+        col.Children.Add(PageKit.Label("不透明度（盒子与组件一起变淡）"));
+        col.Children.Add(row);
+
+        if (!Windows.WindowLook.IsTransparencySupported)
+        {
+            // Win10：WinUI 3 不支持窗口级透明/磨砂，控件禁用 + 说明，别让用户白拖
+            _materialBox.IsEnabled = false;
+            _opacitySlider.IsEnabled = false;
+            col.Children.Add(PageKit.Hint(
+                "当前系统是 Windows 10：WinUI 3 的窗口透明与磨砂只在 Windows 11 生效（桌面版 WPF 是靠 AllowsTransparency 做的，WinUI 没有等价能力）。" +
+                "设置会保存，升级到 Windows 11 后自动生效。"));
+        }
+
+        return PageKit.Card("材质与不透明度", col);
     }
 
     private UIElement MakeSettingsCard()
@@ -150,6 +216,23 @@ public sealed partial class AppearancePage : Page
                 if (_cornerValue is not null) _cornerValue.Text = corner.ToString();
             }
             if (_preview is not null) _preview.CornerRadius = new CornerRadius(corner);
+
+            // 材质 / 不透明度
+            var material = App.Settings?.Get(App.KeyMaterial, Windows.WindowLook.MaterialAcrylic) ?? Windows.WindowLook.MaterialAcrylic;
+            if (_materialBox is not null)
+            {
+                foreach (var item in _materialBox.Items.OfType<ComboBoxItem>())
+                {
+                    if ((item.Tag as string) == material) { _materialBox.SelectedItem = item; break; }
+                }
+                if (_materialBox.SelectedItem is null && _materialBox.Items.Count > 0) _materialBox.SelectedIndex = 0;
+            }
+            var opacity = App.Settings?.Get(App.KeyOpacity, 0.95) ?? 0.95;
+            if (_opacitySlider is not null)
+            {
+                _opacitySlider.Value = opacity;
+                if (_opacityValue is not null) _opacityValue.Text = $"{opacity:0.00}";
+            }
         }
         finally { _syncing = false; }
     }

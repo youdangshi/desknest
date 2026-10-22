@@ -50,6 +50,22 @@ public partial class App : Application
 
     internal static int CurrentCorner => Settings?.Get(KeyCorner, 12) ?? 12;
 
+    /// <summary>主题键：材质（Acrylic / Mica / Solid）。</summary>
+    internal const string KeyMaterial = "theme.desktop.material";
+    /// <summary>主题键：窗口不透明度（0.35–1）。</summary>
+    internal const string KeyOpacity = "theme.desktop.opacity";
+
+    internal static string CurrentMaterial => Settings?.Get(KeyMaterial, Windows.WindowLook.MaterialAcrylic) ?? Windows.WindowLook.MaterialAcrylic;
+
+    internal static double CurrentOpacity
+    {
+        get
+        {
+            var v = Settings?.Get(KeyOpacity, 0.95) ?? 0.95;
+            return Math.Clamp(v, 0.35, 1.0);
+        }
+    }
+
     /// <summary>把当前外观应用到所有盒子窗口（配色 + 圆角）与主窗口。</summary>
     internal static void ApplyLookToAllBoxes()
     {
@@ -234,9 +250,6 @@ public partial class App : Application
                     WidgetWindows.Add(win);
                     win.Activate();
                 }
-
-
-
             }
             catch (Exception ex)
             {

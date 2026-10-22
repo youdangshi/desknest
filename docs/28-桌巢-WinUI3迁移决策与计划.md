@@ -354,3 +354,28 @@ WPF 冒烟 105/105。巡页临时代码已删。
 **新坑（值得记）**：重置位置会 `Upsert` 组件记录——用"内存里的探针组件"做自验时，
 一调这个方法就把探针**写进了真实数据库**，之后每次启动都冒出一个「自验-菜单」组件。
 自验记录必须用 `name like '自验%'` 清理，或探针一律走不落库的路径。
+
+### 11.8 组件外观：材质与不透明度（2026-10-22 21:3x）——含一个硬限制
+
+**做了什么**：`Windows/WindowLook.cs` 统一给盒子与组件套外观；组件右键「外观…」可单独设
+材质（亚克力/云母/纯色）与不透明度（0.35–1.0），保存为"单独样式"（`StyleScope=Override`）；
+外观页有全局「材质与不透明度」（写 `theme.desktop.material/opacity`，与桌面版同键）。
+
+**硬限制（Win10 上做不到，必须记住）**：
+
+| 方案 | 结果 |
+|---|---|
+| `Window.SystemBackdrop = MicaBackdrop / DesktopAcrylicBackdrop` | Win10 build 19045：**不报错、无效果**（SystemBackdrop 实际是 Win11 才生效） |
+| `SetWindowCompositionAttribute`（Win10 经典磨砂） | 返回成功，但对 WinUI 3 窗口（`WS_EX_NOREDIRECTIONBITMAP`）**画面无变化** |
+| `WS_EX_LAYERED + SetLayeredWindowAttributes`（整窗 alpha） | **直接返回 false**：没有重定向位图可做 alpha |
+
+老 WPF 版是靠 `AllowsTransparency + Window.Opacity` 实现的，WinUI 3 **没有等价能力**——
+这是迁移的真实代价，不是配置问题。代码现在按平台能力降级：`IsTransparencySupported`
+（build ≥ 22000）为 false 时强制纯色、界面上的材质/不透明度控件禁用并写明原因
+（"升级到 Windows 11 后自动生效"），设置值照常保存。
+
+**验证**：Win10 上日志 `系统不支持窗口透明（build 19045），材质降级为纯色`、
+`外观：请求=Mica 实际=Solid 底色alpha=255`；外观页截图确认控件禁用 + 说明可见；WPF 冒烟 105/105。
+
+**留给用户的选项**：Win11 上会自动变磨砂；若要在 Win10 上也要"半透明感"，
+替代品只能是"底色明暗/浓度"这类假透明——需要用户点头再做。

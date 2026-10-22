@@ -226,10 +226,13 @@ public sealed partial class BoxWindow : Window
             Root.RequestedTheme = App.CurrentElementTheme;
             // 单盒"单独样式"才用自己的圆角；跟随全局（默认）时用设置里的圆角，
             // 否则全局调圆角对盒子永远无效（盒子库里默认就存着 12）。
-            var corner = _box.StyleScope == StyleScope.Override && _box.CornerRadius > 0
-                ? _box.CornerRadius
-                : App.CurrentCorner;
+            var overrideLook = _box.StyleScope == StyleScope.Override;
+            var corner = overrideLook && _box.CornerRadius > 0 ? _box.CornerRadius : App.CurrentCorner;
             Root.CornerRadius = new CornerRadius(corner);
+
+            var material = overrideLook && !string.IsNullOrWhiteSpace(_box.Material) ? _box.Material : App.CurrentMaterial;
+            var opacity = overrideLook ? _box.Opacity : App.CurrentOpacity;
+            WindowLook.Apply(this, Root, opacity, material);
             App.Log($"BoxWindow[{_box.Name}] look: theme={App.CurrentElementTheme}, corner={corner}");
         }
         catch (Exception ex) { App.Log("应用外观失败：" + ex.Message); }

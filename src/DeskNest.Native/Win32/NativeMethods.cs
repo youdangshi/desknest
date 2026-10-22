@@ -302,6 +302,14 @@ internal static class NativeMethods
     internal const uint DI_NORMAL = 0x0003;
     internal const uint BLACKNESS = 0x00000042;
 
+    // ---------- 窗口透明度（分层窗口） ----------
+    internal const int GWL_EXSTYLE = -20;
+    internal const int WS_EX_LAYERED = 0x00080000;
+    internal const uint LWA_ALPHA = 0x00000002;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint colorKey, byte alpha, uint flags);
+
     [DllImport("user32.dll")] internal static extern IntPtr GetDC(IntPtr hWnd);
     [DllImport("user32.dll")] internal static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
     [DllImport("gdi32.dll")] internal static extern IntPtr CreateCompatibleDC(IntPtr hDC);
