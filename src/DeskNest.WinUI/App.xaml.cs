@@ -55,7 +55,7 @@ public partial class App : Application
     /// <summary>主题键：窗口不透明度（0.35–1）。</summary>
     internal const string KeyOpacity = "theme.desktop.opacity";
 
-    internal static string CurrentMaterial => Settings?.Get(KeyMaterial, Windows.WindowLook.MaterialAcrylic) ?? Windows.WindowLook.MaterialAcrylic;
+    internal static string CurrentMaterial => Settings?.Get(KeyMaterial, Windows.WindowLook.MaterialGlass) ?? Windows.WindowLook.MaterialGlass;
 
     internal static double CurrentOpacity
     {

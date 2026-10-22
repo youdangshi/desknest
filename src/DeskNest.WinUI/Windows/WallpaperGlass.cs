@@ -216,12 +216,28 @@ internal static class WallpaperGlass
     private static void Tint(byte[] px, global::Windows.UI.Color tint, double alpha)
     {
         var a = Math.Clamp(alpha, 0, 1);
-        if (a <= 0) return;
+        // 先去饱和：真毛玻璃背后是模糊且发灰的，不会是一整片艳色。
+        // 不去饱和的话，花壁纸透上来就会"花里胡哨"（用户反馈原话）。
+        const double desat = 0.62;
         for (var i = 0; i < px.Length; i += 4)
         {
-            px[i] = (byte)(px[i] * (1 - a) + tint.B * a);
-            px[i + 1] = (byte)(px[i + 1] * (1 - a) + tint.G * a);
-            px[i + 2] = (byte)(px[i + 2] * (1 - a) + tint.R * a);
+            var b = px[i];
+            var g = px[i + 1];
+            var r = px[i + 2];
+            var gray = 0.299 * r + 0.587 * g + 0.114 * b;
+            r = (byte)(r + (gray - r) * desat);
+            g = (byte)(g + (gray - g) * desat);
+            b = (byte)(b + (gray - b) * desat);
+
+            if (a > 0)
+            {
+                r = (byte)(r * (1 - a) + tint.R * a);
+                g = (byte)(g * (1 - a) + tint.G * a);
+                b = (byte)(b * (1 - a) + tint.B * a);
+            }
+            px[i] = b;
+            px[i + 1] = g;
+            px[i + 2] = r;
         }
     }
 }

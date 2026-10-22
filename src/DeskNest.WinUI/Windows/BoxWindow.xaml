@@ -45,17 +45,15 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <FontIcon Glyph="&#xE8B7;" FontSize="12" Margin="12,0,8,0"
-                      VerticalAlignment="Center" Opacity="0.85" IsHitTestVisible="False" />
+            <FontIcon Glyph="&#xE8B7;" FontSize="11" Margin="12,0,8,0"
+                      VerticalAlignment="Center" Opacity="0.6" IsHitTestVisible="False" />
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
                         VerticalAlignment="Center" IsHitTestVisible="False">
                 <TextBlock x:Name="TitleText" Text="收纳盒" FontSize="13" FontWeight="SemiBold"
                            TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                <Border CornerRadius="8" Padding="7,1,7,2" VerticalAlignment="Center"
-                        Background="{ThemeResource DnSubtleBg}">
-                    <TextBlock x:Name="CountText" Text="0" FontSize="10.5" Opacity="0.8" />
-                </Border>
+                <TextBlock x:Name="CountText" Text="0" FontSize="10.5" Opacity="0.45"
+                           VerticalAlignment="Center" />
             </StackPanel>
 
             <StackPanel x:Name="TitleActions" Grid.Column="2" Orientation="Horizontal"
@@ -98,16 +96,12 @@
                 </GridView.ItemTemplate>
             </GridView>
 
-            <!-- 空态：虚线框（容器空着的时候别只是一片白） -->
-            <Border x:Name="EmptyState" IsHitTestVisible="False" Background="Transparent"
-                    Margin="16" CornerRadius="10" BorderThickness="1.5"
-                    BorderBrush="{ThemeResource DnCardStroke}" Visibility="Collapsed">
-                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
-                    <FontIcon Glyph="&#xE896;" FontSize="26" Opacity="0.4" HorizontalAlignment="Center" />
-                    <TextBlock Text="把文件拖进来" FontSize="12" Opacity="0.55" HorizontalAlignment="Center" />
-                    <TextBlock Text="或右键「添加文件」" FontSize="10.5" Opacity="0.4" HorizontalAlignment="Center" />
-                </StackPanel>
-            </Border>
+            <!-- 空态：只留一行提示，不再画一圈框（框套框会显得花） -->
+            <StackPanel x:Name="EmptyState" IsHitTestVisible="False" Visibility="Collapsed"
+                        VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="6">
+                <FontIcon Glyph="&#xE896;" FontSize="20" Opacity="0.28" HorizontalAlignment="Center" />
+                <TextBlock Text="把文件拖进来" FontSize="12" Opacity="0.45" HorizontalAlignment="Center" />
+            </StackPanel>
         </Grid>
 
         <Border x:Name="StatusBar" Grid.Row="2" Visibility="Collapsed"

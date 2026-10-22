@@ -217,7 +217,13 @@ public sealed partial class AppearancePage : Page
             if (_preview is not null) _preview.CornerRadius = new CornerRadius(corner);
 
             // 材质 / 不透明度
-            var material = App.Settings?.Get(App.KeyMaterial, Windows.WindowLook.MaterialAcrylic) ?? Windows.WindowLook.MaterialAcrylic;
+            var material = App.Settings?.Get(App.KeyMaterial, Windows.WindowLook.MaterialGlass) ?? Windows.WindowLook.MaterialGlass;
+            // Win10 上亚克力/云母会被映射成模拟磨砂，这里也让选中项跟着显示磨砂，避免"选的"和"看到的"不一致
+            if (!Windows.WindowLook.IsTransparencySupported
+                && (material == Windows.WindowLook.MaterialAcrylic || material == Windows.WindowLook.MaterialMica))
+            {
+                material = Windows.WindowLook.MaterialGlass;
+            }
             if (_materialBox is not null)
             {
                 foreach (var item in _materialBox.Items.OfType<ComboBoxItem>())
