@@ -52,8 +52,9 @@ public sealed class MainWindow : FluentWindow
 
         // WPF-UI：Fluent 主题 + Mica/亚克力背景 + 系统级标题栏（观感对齐 DeskBox）
         FluentTheme.Apply(Theme.Shell.Scheme, Theme.Shell.Material);
-        WindowBackdropType = FluentTheme.BackdropFor(Theme.Shell.Material);
         ExtendsContentIntoTitleBar = true;
+        // 背景交给 ApplyShellBackground 统一决定（默认不透明；透明要 DWM 真的接受才开）
+        ApplyShellBackground();
 
         // 点右上角 ✕ 只是收进托盘（托盘应用的标准做法）。真正退出走托盘菜单「退出桌巢」，
         // 否则窗口被销毁后既不能重新显示，也会让托盘里的入口全部报错。
@@ -138,19 +139,16 @@ public sealed class MainWindow : FluentWindow
         {
             try
             {
-                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-                DwmEffects.PreferRoundCorners(hwnd);
-                var material = AppServices.Settings.Get("theme.material", "Acrylic");
-                if (string.Equals(material, "Mica", StringComparison.OrdinalIgnoreCase))
-                {
-                    // 让 Mica 透出来：窗口自身底色改成几乎全透明，失败时下面的 Set 会被跳过，界面仍是自绘底色
-                    if (DwmEffects.TrySetBackdrop(hwnd, DwmEffects.Backdrop.Mica))
-                        Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0));
-                }
+                _hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                DwmEffects.PreferRoundCorners(_hwnd);
+                // 有了句柄再试一次：用户手动开了毛玻璃的话，这次是真刀真枪问 DWM 行不行
+                ApplyShellBackground();
             }
             catch { }
         };
     }
+
+    private IntPtr _hwnd;
 
     /// <summary>在可视化树里找第一个指定类型的子孙元素。</summary>
     private static T? FindChild<T>(DependencyObject root) where T : DependencyObject
@@ -398,21 +396,52 @@ public sealed class MainWindow : FluentWindow
 
     public void RefreshCurrent() => NavigateTo(_current);
 
+    /// <summary>材质背景是否真的在生效（透明底 + 非 None 的 Backdrop）。</summary>
+    public bool IsBackdropActive =>
+        WindowBackdropType != WindowBackdropType.None
+        && Background is System.Windows.Media.SolidColorBrush b && b.Color.A == 0;
+
     /// <summary>
-    /// 主窗口背景：只有"材质真的能用"时才透明（让 Mica/亚克力透上来），否则退回实色背景。
-    /// Windows 10 上亚克力经常不生效，透明窗口会变成"整片发白、文字看不清"
-    /// （用户 2026-10-17 反馈的截图就是这种状态）。
+    /// 真刀真枪开毛玻璃/云母：直接问 DWM 接不接受。接受了才把窗口底色改透明让材质透上来；
+    /// 不接受就返回 false，调用方保持不透明（未打包运行时亚克力经常不被接受，
+    /// 硬透明就是"白底白字根本看不清"——用户 2026-10-22 原话）。
+    /// </summary>
+    public bool TryEnableBackdrop()
+    {
+        if (_hwnd == IntPtr.Zero) return false;   // 句柄还没拿到，先保持不透明，SourceInitialized 时再试
+        var backdrop = Theme.Shell.Material == Ui.MaterialKind.Mica
+            ? DwmEffects.Backdrop.Mica
+            : DwmEffects.Backdrop.Acrylic;
+        if (!DwmEffects.TrySetBackdrop(_hwnd, backdrop)) return false;
+        WindowBackdropType = FluentTheme.BackdropFor(Theme.Shell.Material);
+        Background = System.Windows.Media.Brushes.Transparent;
+        return true;
+    }
+
+    /// <summary>
+    /// 主窗口背景：**默认不透明**（实色底，任何机器上文字都清晰）；
+    /// 用户在外观页手动打开毛玻璃时，先验证 DWM 真的接受这个材质，接受了才透明，
+    /// 否则保持不透明——绝不出现"透明窗口透出白桌面 + 浅色字"的组合。
     /// </summary>
     public void ApplyShellBackground()
     {
         try
         {
-            var opaque = AppServices.Settings.Get("theme.forceOpaqueShell", Environment.OSVersion.Version.Build < 22000);
-            WindowBackdropType = opaque ? WindowBackdropType.None : FluentTheme.BackdropFor(Theme.Shell.Material);
-            Background = opaque ? Theme.Shell.BackgroundBrush : System.Windows.Media.Brushes.Transparent;
+            var opaque = AppServices.Settings.Get("theme.forceOpaqueShell", true)
+                         || Theme.Shell.Material == Ui.MaterialKind.Solid;
+            if (!opaque)
+            {
+                opaque = !TryEnableBackdrop();
+                if (opaque) Log.Warn("DWM 没有接受材质背景（未打包运行时常见），保持不透明实色底");
+            }
+            if (opaque)
+            {
+                WindowBackdropType = WindowBackdropType.None;
+                Background = Theme.Shell.BackgroundBrush;
+            }
             var bg = Background as System.Windows.Media.SolidColorBrush;
-            Log.Info($"主窗口背景：{(opaque ? "不透明（材质未启用）" : "跟随材质 " + Theme.Shell.Material)}" +
-                     (bg is null ? "（透明/材质）" : $" #{bg.Color.R:X2}{bg.Color.G:X2}{bg.Color.B:X2}"));
+            Log.Info($"主窗口背景：{(opaque ? "不透明实色底" : "跟随材质 " + Theme.Shell.Material)}" +
+                     (bg is null || bg.Color.A == 0 ? "（透明/材质）" : $" #{bg.Color.R:X2}{bg.Color.G:X2}{bg.Color.B:X2}"));
         }
         catch (Exception ex) { Log.Warn("设置主窗口背景失败：" + ex.Message); }
     }

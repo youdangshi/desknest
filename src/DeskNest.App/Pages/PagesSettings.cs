@@ -63,10 +63,12 @@ public static class AppearancePage
                     Ui.Notifications.Toast("已改为各自独立样式", 4);
                 })));
 
-        var opaqueDefault = Environment.OSVersion.Version.Build < 22000;
+        // 默认不透明：透明背景在这台机器（未打包运行）上不生效时会变成"白底白字根本看不清"。
+        // 想开毛玻璃可以手动关这个开关——会先问 DWM 接不接受，不接受就弹回不透明。
+        const bool opaqueDefault = true;
         col.Children.Add(UiKit.Section("主窗口背景（看不清文字时改这里）",
             UiKit.ToggleRow("🧊", "用不透明背景",
-                "关掉毛玻璃，主窗口固定用实色底。Windows 10 上亚克力经常不生效，透明窗口会让文字看不清",
+                "默认开。关掉（用毛玻璃）前会先验证这台机器是否真的支持；不支持会保持实色底",
                 AppServices.Settings.Get("theme.forceOpaqueShell", opaqueDefault),
                 v =>
                 {
@@ -75,7 +77,17 @@ public static class AppearancePage
                     // 「不透明 / 跟随材质」抖动就是这么来的，用户看到的是背景闪、文字看不清）。
                     if (AppServices.Settings.Get("theme.forceOpaqueShell", opaqueDefault) == v) return;
                     AppServices.Settings.Set("theme.forceOpaqueShell", v);
-                    (Application.Current as App)?.MainView?.ApplyShellBackground();
+                    var view = (Application.Current as App)?.MainView;
+                    view?.ApplyShellBackground();
+                    if (!v && view is not null && !view.IsBackdropActive)
+                    {
+                        // 用户想要毛玻璃，但 DWM 没接受（未打包运行常见）：弹回不透明，别留一个看不见的窗口
+                        AppServices.Settings.Set("theme.forceOpaqueShell", true);
+                        view.ApplyShellBackground();
+                        Ui.Notifications.Toast("这台机器上毛玻璃不生效（透明会看不清文字），已保持实色底", 6);
+                        host.RefreshCurrent();
+                        return;
+                    }
                     Ui.Notifications.Toast(v ? "主窗口已改为不透明背景" : "主窗口改回毛玻璃背景", 3);
                 })));
 
