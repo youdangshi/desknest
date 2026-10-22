@@ -168,12 +168,37 @@ public sealed partial class BoxWindow : Window
             // 4) 库里记着"卷起"的话，开局就卷起
             if (_box.RolledUp) SetRolledUp(true, persist: false);
 
+            // 5) 外观跟随全局（配色 + 圆角，与 WPF 版共用 theme.desktop.* 键）
+            ApplyLook();
+
             App.Log($"BoxWindow[{_box.Name}] shell ready: scale={_scale:0.00}, pos={AppWindow.Position.X},{AppWindow.Position.Y}, size={AppWindow.Size.Width}x{AppWindow.Size.Height}");
         }
         catch (Exception ex)
         {
             App.Log($"BoxWindow[{_box.Name}] shell setup FAILED: " + ex);
         }
+    }
+
+    // ---------- 外观 ----------
+
+    /// <summary>
+    /// 应用全局外观：配色（ElementTheme）与圆角。
+    /// 盒子上设了单盒圆角（CornerRadius）时以单盒为准——与 WPF 版"单盒可覆盖全局"一致。
+    /// </summary>
+    public void ApplyLook()
+    {
+        try
+        {
+            Root.RequestedTheme = App.CurrentElementTheme;
+            // 单盒"单独样式"才用自己的圆角；跟随全局（默认）时用设置里的圆角，
+            // 否则全局调圆角对盒子永远无效（盒子库里默认就存着 12）。
+            var corner = _box.StyleScope == StyleScope.Override && _box.CornerRadius > 0
+                ? _box.CornerRadius
+                : App.CurrentCorner;
+            Root.CornerRadius = new CornerRadius(corner);
+            App.Log($"BoxWindow[{_box.Name}] look: theme={App.CurrentElementTheme}, corner={corner}");
+        }
+        catch (Exception ex) { App.Log("应用外观失败：" + ex.Message); }
     }
 
     // ---------- 拖动（手动增量 + 吸附，P2-2） ----------
@@ -299,23 +324,19 @@ public sealed partial class BoxWindow : Window
         {
             e.AcceptedOperation = DataPackageOperation.Copy;
             e.DragUIOverride.Caption = $"收进「{_box.Name}」";
-            Root.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemControlHighlightAccentBrush"];
-            Root.BorderThickness = new Thickness(2);
+            DropFrame.Visibility = Visibility.Visible;
         }
         else
         {
             e.AcceptedOperation = DataPackageOperation.None;
+            DropFrame.Visibility = Visibility.Collapsed;
         }
         e.Handled = true;
     }
 
     private void OnDragLeave(object sender, DragEventArgs e) => ResetDragVisual();
 
-    private void ResetDragVisual()
-    {
-        Root.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
-        Root.BorderThickness = new Thickness(1);
-    }
+    private void ResetDragVisual() => DropFrame.Visibility = Visibility.Collapsed;
 
     private async void OnDrop(object sender, DragEventArgs e)
     {

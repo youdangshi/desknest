@@ -119,15 +119,16 @@ public sealed partial class BoxesPage : Page
 
         grid.Children.Add(actions);
 
-        return new Border
+        var row = new Border
         {
-            Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
-            BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(14, 10, 14, 10),
             Child = grid
         };
+        PageKit.SetThemedBrush(row, "DnCardBg", b => row.Background = b);
+        PageKit.SetThemedBrush(row, "DnCardStroke", b => row.BorderBrush = b);
+        return row;
     }
 
     /// <summary>新建收纳盒：**只创建一个空盒子**，不移动任何文件。</summary>

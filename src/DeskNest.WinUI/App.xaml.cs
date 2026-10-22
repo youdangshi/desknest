@@ -13,11 +13,52 @@ public partial class App : Application
     /// <summary>与 WPF 版共用的数据库（WAL 模式，两进程同时读写没问题）。</summary>
     internal static DeskNest.Core.Data.Repository? Repo;
 
+    /// <summary>底层库句柄（统计数据页的搜索索引行数等用）。</summary>
+    internal static DeskNest.Core.Data.Db? Db;
+
     /// <summary>文件搬进/搬出盒子存储目录（与 WPF 版同一个实现，数据互通）。</summary>
     internal static DeskNest.Core.Services.FileOps? Files;
 
     /// <summary>盒子生命周期（删除盒子会先把文件还原回原位置）。</summary>
     internal static DeskNest.Core.Services.BoxService? Boxes;
+
+    /// <summary>设置（与 WPF 版共用 settings.json：theme.desktop.* 等键互通）。</summary>
+    internal static DeskNest.Core.Services.SettingsService? Settings;
+
+    /// <summary>备份服务（数据页用）。</summary>
+    internal static DeskNest.Core.Services.BackupService? Backup;
+
+    /// <summary>主题键：配色方案（FollowSystem/Dark/Light/PureBlack/EyeCare）。</summary>
+    internal const string KeyScheme = "theme.desktop.scheme";
+    /// <summary>主题键：圆角（DIP）。</summary>
+    internal const string KeyCorner = "theme.desktop.corner";
+
+    /// <summary>读配色 → 对应的 XAML ElementTheme。</summary>
+    internal static Microsoft.UI.Xaml.ElementTheme CurrentElementTheme
+    {
+        get
+        {
+            var scheme = Settings?.Get(KeyScheme, "FollowSystem") ?? "FollowSystem";
+            return scheme switch
+            {
+                "Dark" or "PureBlack" => Microsoft.UI.Xaml.ElementTheme.Dark,
+                "Light" or "EyeCare" => Microsoft.UI.Xaml.ElementTheme.Light,
+                _ => Microsoft.UI.Xaml.ElementTheme.Default
+            };
+        }
+    }
+
+    internal static int CurrentCorner => Settings?.Get(KeyCorner, 12) ?? 12;
+
+    /// <summary>把当前外观应用到所有盒子窗口（配色 + 圆角）与主窗口。</summary>
+    internal static void ApplyLookToAllBoxes()
+    {
+        try { Main?.ApplyLook(); } catch (Exception ex) { Log("应用主窗口外观失败：" + ex.Message); }
+        foreach (var w in BoxWindows.ToList())
+        {
+            try { w.ApplyLook(); } catch (Exception ex) { Log("应用外观失败：" + ex.Message); }
+        }
+    }
 
     /// <summary>当前开着的盒子窗口（拖动时互相吸附要用）。</summary>
     internal static readonly List<Windows.BoxWindow> BoxWindows = new();
@@ -58,6 +99,9 @@ public partial class App : Application
         try { BoxesChanged?.Invoke(); } catch (Exception ex) { Log("BoxesChanged 通知失败：" + ex.Message); }
     }
 
+    /// <summary>主窗口（外观变更时要一起刷新）。</summary>
+    internal static MainWindow? Main;
+
     private Window? _window;
 
     private static string BuildLogPath()
@@ -97,7 +141,25 @@ public partial class App : Application
         Log("OnLaunched: begin");
         try
         {
+            // 先接数据库/设置，再建主窗口：概览页在 ctor 里就导航并读统计，
+            // 顺序反了第一屏会显示 0 个盒子（P4 自验踩到）。
+            try
+            {
+                Db = new DeskNest.Core.Data.Db();
+                Repo = new DeskNest.Core.Data.Repository(Db);
+                Files = new DeskNest.Core.Services.FileOps(Repo);
+                Boxes = new DeskNest.Core.Services.BoxService(Repo, Files);
+                Settings = new DeskNest.Core.Services.SettingsService();
+                Backup = new DeskNest.Core.Services.BackupService(Settings);
+                Log("services ready");
+            }
+            catch (Exception ex)
+            {
+                Log("init services FAILED: " + ex);
+            }
+
             _window = new MainWindow();
+            Main = _window as MainWindow;
             Log("MainWindow created");
             _window.Activate();
             Log("Activate called");
@@ -106,11 +168,7 @@ public partial class App : Application
             // 库里一个都没有时放一个演示盒子，保证有东西可看。
             try
             {
-                var db = new DeskNest.Core.Data.Db();
-                Repo = new DeskNest.Core.Data.Repository(db);
-                Files = new DeskNest.Core.Services.FileOps(Repo);
-                Boxes = new DeskNest.Core.Services.BoxService(Repo, Files);
-                var boxes = Repo.Boxes().Where(b => !b.IsHidden).ToList();
+                var boxes = Repo?.Boxes().Where(b => !b.IsHidden).ToList() ?? new();
                 Log($"boxes in db: {boxes.Count}");
                 foreach (var box in boxes)
                 {

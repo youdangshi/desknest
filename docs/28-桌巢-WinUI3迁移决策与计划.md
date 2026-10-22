@@ -246,3 +246,35 @@ WPF 版 v2.0 八条反馈已全部清零（③⑧ 已进冒烟，105/105），�
 - 自证：p3-fullscreen.png（收纳盒页三行 + 开关/打开/删除全可见）、p3-final-box.png
   （桌面卷起盒子条）。WPF 回归冒烟 105/105。
 - 待真机：拖文件进盒（注入无效）、右键菜单点击、深浅色切换。
+
+### 11.3 P4 结果（2026-10-22 09:4x）：五个页面全部有真内容
+
+- **概览**：实时统计（盒子数 / 显示隐藏 / 盒内文件 / 数据库大小）+ 常用操作（去收纳盒页、
+  全部显示/隐藏、打开数据目录）+ 最近更新的盒子（直接开窗）。订阅 BoxesChanged 自动刷新。
+- **外观与主题**：配色（跟随系统/深色/浅色/纯黑/护眼）+ 圆角滑块，写 `theme.desktop.scheme|corner`
+  （与 WPF 版同一批键），改完**即时**应用到所有盒子窗口 + 主窗口；预览卡跟着变。
+- **数据与备份**：数据位置五项、搜索索引条目数 + 清空（DELETE+VACUUM）、备份列表 + 立即备份
+  （复用 Core BackupService，zip 与桌面版互通）。
+- **关于**：版本/构建时间/技术栈/运行时/系统/数据目录/日志、打开日志目录、项目主页、许可证说明。
+- 新增 `Pages/PageKit.cs`：卡片/统计块/信息行/操作行/分隔线统一组件。
+
+**本轮的三个坑（都值得记住）**：
+
+1. **`MenuFlyoutItem.Icon="Hide"` 之类非法 Symbol 会炸窗口**（上一轮）；本轮同类问题没再犯，
+   但记一笔：WinUI 的枚举字符串解析失败只抛 XamlParseException，不指出哪一行。
+2. **代码里设的主题画刷不跟主题变**：`Application.Current.Resources["CardBackground…"]`
+   拿到的是固定值；而 `Application.Current.Resources.ThemeDictionaries` 在 WinUI 3 里是**空的**
+   （系统主题字典在 XamlControlsResources 内部，不合并到应用级），回退值是 `#B3FFFFFF`
+   （70% 白）——切深色后白字压浅底，用户此前反馈"看不清"根因同源。
+   修法：App.xaml 里自己定义 `Dn*` 主题字典（Default=深 / Light=浅），PageKit 按元素
+   `ActualTheme` 查字典并订阅 `ActualThemeChanged` 重新上色。
+3. **外观页的控件回填会污染设置**：`Slider.Value = 12` 触发的 ValueChanged 会把半路值写回设置
+   （实测把圆角写成了 2）。修法：`_syncing` 闸门，回填期间忽略变更事件。
+
+**验证**：临时巡页（自动切 5 页）逐页截图 + 日志；设置写 Dark/圆角 20 重启后
+`look: theme=Dark, corner=20` 且截图深色可读；恢复 FollowSystem/12 后浅色截图正常；
+WPF 冒烟 105/105。巡页临时代码已删。
+
+**顺手发现的真问题**：本机 `desknest.db` 有 **1.7 GB**，其中 `search_index` 表 **334 万行**
+（全盘搜索把整块磁盘都索引了）。数据页已加"已索引条目 + 清空索引"入口；
+是否清空由用户决定（索引可再生，但不是我该替他删的东西）。

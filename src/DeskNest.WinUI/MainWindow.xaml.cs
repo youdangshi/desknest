@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using DeskNest.WinUI.Pages;
 using Microsoft.UI.Xaml.Controls;
 
@@ -21,6 +22,28 @@ public sealed partial class MainWindow : Microsoft.UI.Xaml.Window
             App.Log("Navigate FAILED: " + ex);
         }
         Title = "桌巢 DeskNest";
+        ApplyLook();
+    }
+
+    /// <summary>外观页改配色后由 App.ApplyLookToAllBoxes 调回来刷新。</summary>
+    public void ApplyLook()
+    {
+        try { RootGrid.RequestedTheme = App.CurrentElementTheme; }
+        catch (Exception ex) { App.Log("主窗口外观应用失败：" + ex.Message); }
+    }
+
+    /// <summary>按 Tag 切页（供其他页面跳转用，保持左侧选中项同步）。</summary>
+    public void SelectPage(string tag)
+    {
+        try
+        {
+            foreach (var item in Nav.MenuItems.OfType<NavigationViewItem>())
+            {
+                if ((item.Tag as string) == tag) { Nav.SelectedItem = item; return; }
+            }
+            App.Log("SelectPage: 没找到 tag=" + tag);
+        }
+        catch (Exception ex) { App.Log("SelectPage 失败：" + ex.Message); }
     }
 
     private void OnNavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
