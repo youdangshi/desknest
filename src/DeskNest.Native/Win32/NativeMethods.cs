@@ -36,6 +36,14 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
+    // 64 位下设置窗口里的指针型字段（如 GWLP_HWNDPARENT）必须走 Ptr 版本，
+    // 用上面的 SetWindowLong 会把指针截成 32 位
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    internal static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern IntPtr GetWindow(IntPtr hWnd, int uCmd);
+
     [DllImport("user32.dll")]
     internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 

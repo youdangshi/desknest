@@ -105,6 +105,46 @@ public static class DesktopLayer
         return false;
     }
 
+    /// <summary>
+    /// P0 探针验证过的桌面层方案（docs/28 §10.5）：把"承载桌面图标的宿主窗口"设为本窗口的
+    /// **owner**（不是 parent！），外加 WS_EX_TOOLWINDOW（不进 Alt+Tab / 任务栏）。
+    /// owner 关系下窗口仍在桌面层附近、可点可拖，Win+D 会随桌面一起显示。
+    /// workerw（SetParent 挂进去）会让窗口变小、bottom 会沉到壁纸后面——都不要用。
+    /// 返回 false 时调用方应降级为普通窗口。
+    /// </summary>
+    public static bool AttachOwner(IntPtr hwnd)
+    {
+        const int GWLP_HWNDPARENT = -8;
+        const int GW_OWNER = 4;
+        try
+        {
+            var host = FindDesktopHost();
+            if (host == IntPtr.Zero)
+            {
+                Log.Warn("AttachOwner：找不到桌面宿主窗口");
+                return false;
+            }
+            var ex = NativeMethods.GetWindowLong(hwnd, GWL_EXSTYLE);
+            NativeMethods.SetWindowLong(hwnd, GWL_EXSTYLE, ex | WS_EX_TOOLWINDOW);
+            NativeMethods.SetWindowLongPtr(hwnd, GWLP_HWNDPARENT, host);
+
+            // 核实（P0 的教训：不核实等于没做——SetParent 就曾被框架悄悄回滚过）
+            var actual = NativeMethods.GetWindow(hwnd, GW_OWNER);
+            if (actual != host)
+            {
+                Log.Warn($"AttachOwner：owner 没设上（期望 0x{host.ToInt64():X}，实际 0x{actual.ToInt64():X}）");
+                return false;
+            }
+            Log.Info($"AttachOwner：已把 owner 设为桌面宿主 0x{host.ToInt64():X}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("AttachOwner 失败：" + ex.Message);
+            return false;
+        }
+    }
+
     /// <summary>老的桌面层挂载实现，保留下来供以后有更好的办法时参考/回退测试。</summary>
     public static bool AttachToDesktopLayerLegacy(IntPtr hwnd, bool allowFocus = true)
     {

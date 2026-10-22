@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="DeskNest.WinUI.Windows.BoxWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 盒子 = 自绘标题栏（名称 + 卷起/隐藏）+ 文件列表。系统标题栏在 code-behind 里用 Win32 摘掉。 -->
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="TitleBarGrid" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <TextBlock x:Name="TitleText" Text="收纳盒" Margin="12,0,0,0"
+                       VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold"
+                       IsHitTestVisible="False" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button x:Name="RollupButton" Content="—" Width="32" Height="24" Margin="0,0,4,0"
+                        FontSize="11" ToolTipService.ToolTip="卷起 / 展开" />
+                <Button x:Name="CloseButton" Content="✕" Width="32" Height="24"
+                        FontSize="11" ToolTipService.ToolTip="隐藏这个盒子" />
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+            <ListView x:Name="ItemList">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="24" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE8A5;" FontSize="14" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontSize="12"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+            <TextBlock x:Name="EmptyText" Text="（空盒子——把文件拖进来）" Opacity="0.55"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12"
+                       IsHitTestVisible="False" />
+        </Grid>
+    </Grid>
+</Window>

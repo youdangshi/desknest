@@ -198,3 +198,30 @@ Activate → `nav -> overview`），窗口真实出现（标题「桌巢 DeskNes
 
 P1 完成判据（§5）：NavigationView + 5 页切换 ✔（`nav ->` 日志与页内容渲染均正常）；
 **深浅色切换待用户现场看一眼**。下一步 P2（桌面盒窗口）。
+
+## 11. 路线转正（2026-10-22）：WinUI 成为主线，WPF 冻结
+
+用户拍板「重写整个 UI → 直接转 WinUI 3」。docs/29（不换框架重写界面层）随之作废、留档备查。
+WPF 版 v2.0 八条反馈已全部清零（③⑧ 已进冒烟，105/105），转入冻结维护。
+当前阶段：**P2 桌面盒窗口**（按 §5 判据：盒子贴桌面层、能拖、能读文件列表、能卷起）。
+
+### 11.1 P2 结果（2026-10-22 08:2x）：盒子窗口四件套全通
+
+`src/DeskNest.WinUI/Windows/BoxWindow.xaml(.cs)`，真机打包验证：
+
+- **自绘标题栏**：Win32 摘掉 WS_CAPTION/WS_SYSMENU/最小最大化（`SetWindowLong` + `SWP_FRAMECHANGED`），
+  XAML 自绘 36 DIP 标题栏（名称 + 卷起 + 隐藏）。
+- **挂桌面层**：`DesktopLayer.AttachOwner`（Native 新增；`SetWindowLongPtr(GWLP_HWNDPARENT, 图标宿主)`
+  + WS_EX_TOOLWINDOW，**读回 owner 核实**），日志 `AttachOwner -> True`。
+- **手动增量拖动 + 吸附**：PointerPressed/Moved/Released + CapturePointer；全程物理像素
+  （`GetCursorPos` 与 `AppWindow.Position` 同为物理像素，天然绕开 WPF 版 DPI 换算坑）；
+  吸附复用 Core `WindowSnap`（其它盒子 + 主屏工作区）；落点换回 DIP 存库，与 WPF 版位置互通。
+  点在标题栏按钮上不触发拖动（祖先链查 Button）。
+- **文件列表**：App 启动时 `Db`+`Repository` 直连原库（WAL 模式，与 WPF 版并存不打架），
+  恢复所有"显示中"盒子；`items = 0/…` 日志核对。
+- **卷起**：先放开 `OverlappedPresenter.PreferredMinimumHeight` 再设高度（老坑）；
+  库里 `RolledUp=true` 开局即卷起——实测 height=45（36 DIP × 1.25）✔。
+
+自证：`_re/shots/p2-box.png`（展开的演示盒）、`_re/shots/p2-box-rolled.png`（卷起的真实盒子，
+320x36 DIP 一条标题栏）· 日志全链路 · WPF 侧回归冒烟 105/105。
+下一步 P3：盒子菜单/拖文件进盒子/新建删除入口；主窗口 5 页内容填充。
