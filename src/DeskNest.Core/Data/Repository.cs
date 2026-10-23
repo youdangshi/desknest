@@ -396,6 +396,24 @@ public sealed class Repository
         r => new Services.SearchService.IndexEntry(r.GetString(0), r.GetInt32(1) != 0, r.GetInt64(2),
             new DateTime(r.GetInt64(3))));
 
+    /// <summary>
+    /// 直接在 SQL 里按路径模糊查索引（不把全表读进内存）。
+    /// 为什么要这个：`LoadSearchStore` 会把 300 多万条灌进字典——那是桌面版的做法，
+    /// 内存代价太大。界面只想"搜一下"的时候，走这条 SQL 更合适。
+    /// 注意 LIKE '%x%' 必然全表扫描，300 万行约 1 秒量级，调用方要放到后台线程。
+    /// </summary>
+    public List<Services.SearchService.IndexEntry> SearchPaths(string needle, int limit = 200)
+    {
+        var q = (needle ?? "").Trim();
+        if (q.Length == 0) return new();
+        var like = "%" + q.Replace("%", "").Replace("_", "") + "%";
+        return _db.Query(
+            "SELECT path,is_dir,size,mtime FROM search_index WHERE path LIKE $n LIMIT $l",
+            r => new Services.SearchService.IndexEntry(r.GetString(0), r.GetInt32(1) != 0, r.GetInt64(2),
+                new DateTime(r.GetInt64(3))),
+            ("$n", like), ("$l", limit));
+    }
+
     public static void EnsureSearchIndexTable(Db db) => db.Exec(
         "CREATE TABLE IF NOT EXISTS search_index(path TEXT PRIMARY KEY, is_dir INTEGER, size INTEGER, mtime INTEGER);");
 }

@@ -54,6 +54,7 @@ public sealed partial class MainWindow : Microsoft.UI.Xaml.Window
             var tag = item.Tag as string ?? "overview";
             var page = tag switch
             {
+                "search" => typeof(SearchPage),
                 "boxes" => typeof(BoxesPage),
                 "appearance" => typeof(AppearancePage),
                 "data" => typeof(DataPage),

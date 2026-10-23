@@ -17,6 +17,9 @@
                 <muxc:NavigationViewItem Content="概览" Tag="overview" IsSelected="True">
                     <muxc:NavigationViewItem.Icon><SymbolIcon Symbol="Home"/></muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="搜索" Tag="search">
+                    <muxc:NavigationViewItem.Icon><SymbolIcon Symbol="Find"/></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
                 <muxc:NavigationViewItem Content="收纳盒" Tag="boxes">
                     <muxc:NavigationViewItem.Icon><SymbolIcon Symbol="Folder"/></muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>

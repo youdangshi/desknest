@@ -45,6 +45,9 @@ internal static class PageKit
         return Transparent;
     }
 
+    /// <summary>按元素当前主题取一支笔刷（悬停/临时底色这类一次性用）。</summary>
+    public static Brush ThemedBrush(FrameworkElement element, string key) => Res(key, element.ActualTheme);
+
     /// <summary>
     /// 给元素设主题笔刷，并在它所在主题变化时自动重算（切深浅色不用重建页面）。
     /// </summary>
