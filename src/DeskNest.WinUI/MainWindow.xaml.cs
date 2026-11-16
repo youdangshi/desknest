@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using DeskNest.WinUI.Pages;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Controls;
 
 namespace DeskNest.WinUI;
@@ -23,6 +24,27 @@ public sealed partial class MainWindow : Microsoft.UI.Xaml.Window
         }
         Title = "桌巢 DeskNest";
         ApplyLook();
+        HookClose();
+    }
+
+    /// <summary>
+    /// 关闭按钮 = 隐藏到托盘（托盘菜单「退出桌巢」才是真退出）。
+    /// 用 AppWindow.Closing 可取消关闭；真退出时 App.ApplyingExit 会让这里放行。
+    /// </summary>
+    private void HookClose()
+    {
+        try
+        {
+            AppWindow.Closing += (_, e) =>
+            {
+                if (App.IsExiting) return;
+                e.Cancel = true;
+                AppWindow.Hide();
+                App.Log("主窗口关闭按钮 → 隐藏到托盘");
+            };
+            App.Log("主窗口关闭已拦截（关窗隐藏到托盘）");
+        }
+        catch (Exception ex) { App.Log("拦截关闭失败：" + ex.Message); }
     }
 
     /// <summary>外观页改配色后由 App.ApplyLookToAllBoxes 调回来刷新。</summary>

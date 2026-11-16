@@ -24,5 +24,9 @@
     <ProjectReference Include="..\DeskNest.Core\DeskNest.Core.csproj" />
     <ProjectReference Include="..\DeskNest.Native\DeskNest.Native.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- 托盘图标：放到输出根目录（不进 Assets 子目录，避免与 pack-shell.ps1 复制的 _msix\Assets 合并成 Assets\Assets）。 -->
+    <Content Include="Assets\desknest.ico" Link="desknest.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
 

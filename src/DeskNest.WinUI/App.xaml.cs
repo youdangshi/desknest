@@ -159,6 +159,18 @@ public partial class App : Application
     /// <summary>主窗口（外观变更时要一起刷新）。</summary>
     internal static MainWindow? Main;
 
+    /// <summary>系统托盘（关窗隐藏后靠它把窗口叫回来）。</summary>
+    private static DeskNest.Native.Win32.TrayIcon? _tray;
+
+    /// <summary>真退出流程中：主窗口的关窗拦截据此放行，不再隐藏。</summary>
+    internal static bool IsExiting;
+
+    /// <summary>桌面盒/组件是否处于临时隐藏（托盘菜单切换，不改数据库）。</summary>
+    private static bool _layerHidden;
+
+    /// <summary>托盘要放在 UI 线程之外回调，统一从这里切回来。</summary>
+    private static Microsoft.UI.Dispatching.DispatcherQueue? _uiQueue;
+
     private Window? _window;
 
     private static string BuildLogPath()
@@ -175,6 +187,108 @@ public partial class App : Application
     internal static void Log(string message)
     {
         try { File.AppendAllText(LogPath, $"[{DateTime.Now:HH:mm:ss.fff}] {message}\r\n"); } catch { }
+    }
+
+    // ---------- 系统托盘 ----------
+    private const int TrayShowMain = 1001;
+    private const int TraySearch = 1002;
+    private const int TrayToggleLayer = 1003;
+    private const int TrayExit = 1004;
+
+    /// <summary>托盘菜单项 ID，供 MainWindow 关闭拦截等复用。</summary>
+    internal static int TrayCommandExit => TrayExit;
+
+    private static void InitTray()
+    {
+        try
+        {
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "desknest.ico");
+            var items = new[]
+            {
+                new DeskNest.Native.Win32.TrayMenuItem(TrayShowMain, "打开主窗口"),
+                new DeskNest.Native.Win32.TrayMenuItem(TraySearch, "搜索…"),
+                new DeskNest.Native.Win32.TrayMenuItem(TrayToggleLayer, "显示 / 隐藏桌面盒与组件"),
+                new DeskNest.Native.Win32.TrayMenuItem(0, "", IsSeparator: true),
+                new DeskNest.Native.Win32.TrayMenuItem(TrayExit, "退出桌巢")
+            };
+            _tray = new DeskNest.Native.Win32.TrayIcon(
+                iconPath, "桌巢 DeskNest", items,
+                id => _uiQueue?.TryEnqueue(() => OnTrayCommand(id)),
+                () => _uiQueue?.TryEnqueue(ShowMainWindow));
+            Log("托盘已初始化");
+        }
+        catch (Exception ex) { Log("托盘初始化失败：" + ex); }
+    }
+
+    private static void OnTrayCommand(int id)
+    {
+        switch (id)
+        {
+            case TrayShowMain:
+                ShowMainWindow();
+                break;
+            case TraySearch:
+                ShowMainWindow();
+                Main?.SelectPage("search");
+                break;
+            case TrayToggleLayer:
+                ToggleDesktopLayer();
+                break;
+            case TrayExit:
+                ExitApp();
+                break;
+        }
+    }
+
+    /// <summary>显示并激活主窗口（含被关窗隐藏 / 最小化两种情况）。</summary>
+    internal static void ShowMainWindow()
+    {
+        try
+        {
+            if (Main is null) { Log("ShowMainWindow: Main 为空"); return; }
+            Main.AppWindow.Show();
+            Main.Activate();
+            Log("托盘：显示主窗口");
+        }
+        catch (Exception ex) { Log("显示主窗口失败：" + ex.Message); }
+    }
+
+    /// <summary>临时显示/隐藏所有桌面盒与组件（不动数据库里的 IsHidden/IsVisible）。</summary>
+    private static void ToggleDesktopLayer()
+    {
+        _layerHidden = !_layerHidden;
+        try
+        {
+            if (_layerHidden)
+            {
+                foreach (var w in BoxWindows.ToList()) w.AppWindow.Hide();
+                foreach (var w in WidgetWindows.ToList()) w.AppWindow.Hide();
+            }
+            else
+            {
+                foreach (var w in BoxWindows.ToList()) w.AppWindow.Show();
+                foreach (var w in WidgetWindows.ToList()) w.AppWindow.Show();
+            }
+            Log("托盘：" + (_layerHidden ? "隐藏" : "显示") + "桌面盒与组件");
+        }
+        catch (Exception ex) { Log("切换桌面层失败：" + ex.Message); }
+    }
+
+    /// <summary>真正退出：先收托盘，再关所有窗口，最后结束进程。</summary>
+    internal static void ExitApp()
+    {
+        Log("ExitApp: begin");
+        IsExiting = true;
+        try { _tray?.Dispose(); _tray = null; } catch (Exception ex) { Log("托盘清理失败：" + ex.Message); }
+        try
+        {
+            foreach (var w in BoxWindows.ToList()) w.Close();
+            BoxWindows.Clear();
+            foreach (var w in WidgetWindows.ToList()) w.Close();
+            WidgetWindows.Clear();
+        }
+        catch (Exception ex) { Log("关窗口失败：" + ex.Message); }
+        try { Current.Exit(); } catch (Exception ex) { Log("Application.Exit 失败：" + ex.Message); }
     }
 
     public App()
@@ -220,6 +334,9 @@ public partial class App : Application
             Log("MainWindow created");
             _window.Activate();
             Log("Activate called");
+
+            _uiQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+            InitTray();
 
             // P2：从数据库恢复所有"显示中"的盒子（与 WPF 版同库，位置/内容互通）；
             // 库里一个都没有时放一个演示盒子，保证有东西可看。

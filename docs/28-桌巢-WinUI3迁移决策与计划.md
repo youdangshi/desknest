@@ -470,3 +470,35 @@ winutil64.exe、WindowsSpeech_Dictation.dll …），图标/路径/大小都正�
 
 **踩到的坑**：`DispatcherQueue.CreateTimer()` 出来的定时器如果只被局部变量引用，会被 GC 回收，
 Tick 永远不来——自验脚本里连续两次踩到，最终改成 `DispatcherQueue.TryEnqueue` 直接切页。
+
+### 11.13 P4 补完：系统托盘 + 关窗隐藏（2026-11-16 19:1x）
+
+WinUI 3 版此前没有托盘，`MainWindow` 关闭按钮 = 真退出，误关后只能从任务栏/开始菜单重新找——
+本轮把原迁移计划里一直欠着的 P4「托盘 / 外围」这块补上。
+
+**Native 层**（`src/DeskNest.Native/Win32/TrayIcon.cs`，新增）：
+- 标准 Win32 `Shell_NotifyIconW`（`NOTIFYICONDATAW` + `NIM_ADD/MODIFY/DELETE`），不用 WinForms
+  `NotifyIcon`，WinUI 项目不必引 WinForms。
+- 消息窗口跑在**独立 STA 线程**（`HWND_MESSAGE` 消息-only 窗口）：右键菜单弹在该线程不卡 UI；
+  左键单击 / 双击、菜单点击通过回调交给宿主，宿主用 `DispatcherQueue.TryEnqueue` 切回 UI 线程。
+- 右键菜单用 `CreatePopupMenu`/`TrackPopupMenuEx`（`TPM_RETURNCMD`），点击外部自动收起靠
+  `SetForegroundWindow` + 投递 `WM_NULL` 的经典顺序。
+- WndProc 委托**静态强引用**防 GC（同 `DispatcherQueueTimer` 那个坑）。
+
+**WinUI 侧**：
+- `App.xaml.cs`：`OnLaunched` 里 `InitTray()`；菜单 4 项——打开主窗口 / 搜索 / 显示隐藏桌面盒与组件 /
+  退出。显示切换只改窗口 `AppWindow.Hide()/Show()`，**不动库里的 IsHidden/IsVisible**。
+- `MainWindow.xaml.cs`：`AppWindow.Closing` 拦截，普通关闭 `e.Cancel=true` + `AppWindow.Hide()`（隐藏到托盘）；
+  只有走托盘「退出桌巢」时 `App.IsExiting=true` 才放行。
+- 图标：`src/DeskNest.WinUI/Assets/desknest.ico`（复用 WPF 版），csproj 用 `Link="desknest.ico"`
+  复制到输出**根目录**——不能进 `Assets\` 子目录，否则 pack-shell.ps1 复制 `_msix\Assets` 会叠成 `Assets\Assets`。
+
+**踩到的坑**：WinUI 3 的 `Window` 没有 `Show()/Hide()`/`WindowId.CreateFromHWND`，也没有
+`AppWindow.Activate()`——显示/隐藏用 `AppWindow.Show()/Hide()`，激活用 `Window.Activate()`，
+`Application.Exit()` 在静态上下文要写 `Current.Exit()`。
+
+**自验**：独立探针（临时目录，不进仓库）实例化 `TrayIcon` —— 日志出现
+`托盘图标已创建`（`NIM_ADD` 返回 true，图标真进系统托盘）+ `托盘消息线程退出(GetMessage=0)`
+（Dispose 干净收尾，无卡死无崩溃）。编译 0 错误；MSIX 打包 87.3 MB 成功，解包确认根目录与
+`Assets\` 下均有 desknest.ico。**右键菜单的点击命中与"关窗隐藏"的真机手感仍需用户亲手试**
+（本机鼠标注入无效，见 CONTEXT.md 约定）。
