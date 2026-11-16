@@ -218,10 +218,20 @@ public partial class App : Application
                 new DeskNest.Native.Win32.TrayMenuItem(0, "", IsSeparator: true),
                 new DeskNest.Native.Win32.TrayMenuItem(TrayExit, "退出桌巢")
             };
+            // Ctrl+F 全局唤起搜索：热键注册在托盘的 STA 消息窗口上，回调切回 UI 线程。
+            // Mods.Control=0x2（Native GlobalHotKey.Mods.Control），VK_F=0x46。
+            var searchHotKey = new DeskNest.Native.Win32.TrayHotKey(
+                0x0002, 0x46,
+                () => _uiQueue?.TryEnqueue(() =>
+                {
+                    OpenSearch();
+                    App.Log("Ctrl+F：唤起搜索");
+                }));
             _tray = new DeskNest.Native.Win32.TrayIcon(
                 iconPath, "桌巢 DeskNest", items,
                 id => _uiQueue?.TryEnqueue(() => OnTrayCommand(id)),
-                () => _uiQueue?.TryEnqueue(ShowMainWindow));
+                () => _uiQueue?.TryEnqueue(ShowMainWindow),
+                searchHotKey);
             Log("托盘已初始化");
         }
         catch (Exception ex) { Log("托盘初始化失败：" + ex); }
@@ -273,8 +283,7 @@ public partial class App : Application
                 ShowMainWindow();
                 break;
             case TraySearch:
-                ShowMainWindow();
-                Main?.SelectPage("search");
+                OpenSearch();
                 break;
             case TrayToggleLayer:
                 ToggleDesktopLayer();
@@ -296,6 +305,19 @@ public partial class App : Application
             Log("托盘：显示主窗口");
         }
         catch (Exception ex) { Log("显示主窗口失败：" + ex.Message); }
+    }
+
+    /// <summary>唤起搜索：显示主窗口 → 切到搜索页 → 聚焦输入框（供托盘菜单与 Ctrl+F 共用）。</summary>
+    internal static void OpenSearch()
+    {
+        ShowMainWindow();
+        Main?.SelectPage("search");
+        // 页面可能刚导航、尚未完成布局，延后一拍聚焦更稳。
+        _uiQueue?.TryEnqueue(() =>
+        {
+            try { Main?.FocusSearchIfCurrent(); }
+            catch (Exception ex) { Log("搜索页聚焦失败：" + ex.Message); }
+        });
     }
 
     /// <summary>临时显示/隐藏所有桌面盒与组件（不动数据库里的 IsHidden/IsVisible）。</summary>

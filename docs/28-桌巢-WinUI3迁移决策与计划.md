@@ -566,3 +566,36 @@ items=0）+ 2 个不可见测试组件，是历史自验残留，污染概览统
 且 `LOCALAPPDATA`/`PUBLIC` 环境变量为空导致 NuGet restore `path1` 报错。解法：编译用
 `--no-restore`，makeappx 走 Bash + `MSYS2_ARG_CONV_EXCL="*"`（否则 `/d` 被 MSYS 转成 `D:/`）。
 打包成功 91.5 MB。这些是环境问题，非代码缺陷。
+
+### 11.16 清理历史脏数据 + FTS5 决策 + Ctrl+F 全局热键（2026-11-16 21:5x）
+
+用户要求"清理继续推进项目"，做了三件事：
+
+**1) 清理历史自验脏数据（用户确认后执行，可回滚）**
+- 整库备份 `desknest.db.bak-20261116-214002`（1.73 GB，校验可读）后精确删除：
+  5 个 hidden 测试盒、5 个成员已失效的空壳组、2 个不可见测试组件、8 条 applied=0 的
+  move-in/restore journal 意图。`integrity_check: ok`，`search_index` 3343351 条未动。
+- 剩余 21 条 `move` 类型 journal 不在确认范围，未动。
+- 工作区临时产物清理：`_pack-out.txt`、4 个 `.msix.bak-*`、2 个 `shell.bak-*`（共约 756 MB），
+  `git status` 干净。
+
+**2) FTS5 搜索提速：实测后决定不实施（负决策也记录）**
+`docs/28` §11.12 原写"将来提速就上 FTS5"。本轮先做基准再决定：
+- 真实库 LIKE 实测：`%win%` 5ms、`%dll%` 0ms、`%temp%` 9ms（LIMIT 400 命中多时早停）；
+  但稀疏查询 `%zzzz%`(1命中) 1153ms、`%abcdefgh%`(0命中) 1299ms、`%Windows.System%` 1111ms。
+- FTS5 trigram（SQLite 3.53.1 支持）：10 万条样本中，FTS 查询 0.4ms vs LIKE 3.3ms；
+  但用 20 万真实路径推算到 334 万条：**构建约 178 秒、额外索引约 1.5 GB**，
+  且每次全盘索引重建都要重来一遍。
+- 结论：为把"搜不存在的词"从 1.1 秒降到毫秒级，付出 1.5 GB 常驻 + 3 分钟重建 + 代码复杂度，
+  **成本收益不成立**；且"确认无匹配必须扫全表"本就是信息论下限。放弃 FTS5，保持克制。
+  稀疏查询的 1 秒是已有防抖(280ms)+取消机制下的合理代价，不是 bug。
+
+**3) Ctrl+F 全局唤起搜索（真缺口，已实现）**
+Native 早有 `GlobalHotKey` 但 WinUI 线没接。`TrayIcon` 复用其 STA 消息窗口：
+- 新增 `TrayHotKey(Mods, VirtualKey, OnPressed)` 配置，构造时可选传入；
+  `RegisterHotKey`/`UnregisterHotKey` 在消息线程注册/注销，`WM_HOTKEY(0x0312)` 回调。
+- App 传入 Ctrl+F（mods=0x2, vk=0x46），回调 `_uiQueue.TryEnqueue` → `OpenSearch()`
+  （显示主窗口 → 跳搜索页 → 延后一拍聚焦输入框）；托盘菜单「搜索…」也复用 OpenSearch。
+- **真机验证**：Core 日志 `全局热键已注册（mods=2 vk=70）`；用 Python ctypes 发系统级
+  Ctrl+F 后，WinUI 日志出现 `nav -> search` + `Ctrl+F：唤起搜索`。全链路通过。
+- 冒烟 117/117 保持全绿；编译 0 错误；MSIX 打包 91.5 MB 成功。

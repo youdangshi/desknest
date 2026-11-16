@@ -60,6 +60,13 @@ public sealed partial class SearchPage : Page
         };
     }
 
+    /// <summary>供 Ctrl+F 等外部入口调用：聚焦输入框，省一次点击。</summary>
+    public void FocusQuery()
+    {
+        try { QueryBox.Focus(FocusState.Programmatic); }
+        catch (Exception ex) { App.Log("搜索框聚焦失败：" + ex.Message); }
+    }
+
     private void ShowHints()
     {
         ResultHost.Children.Clear();

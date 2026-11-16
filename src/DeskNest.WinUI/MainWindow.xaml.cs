@@ -68,6 +68,12 @@ public sealed partial class MainWindow : Microsoft.UI.Xaml.Window
         catch (Exception ex) { App.Log("SelectPage 失败：" + ex.Message); }
     }
 
+    /// <summary>供 App 的全局入口调用：聚焦当前搜索页输入框（若正在搜索页）。</summary>
+    public void FocusSearchIfCurrent()
+    {
+        if (ContentFrame.Content is Pages.SearchPage page) page.FocusQuery();
+    }
+
     private void OnNavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         try

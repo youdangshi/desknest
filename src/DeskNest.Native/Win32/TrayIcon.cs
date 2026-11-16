@@ -8,6 +8,12 @@ namespace DeskNest.Native.Win32;
 public sealed record TrayMenuItem(int Id, string Text, bool IsSeparator = false);
 
 /// <summary>
+/// 注册在托盘消息窗口上的全局热键。Mods/VirtualKey 用 Win32 值（见 GlobalHotKey.Mods 与 VK_*）。
+/// 复用托盘的 STA 消息窗口，省得为热键再起一条线程。
+/// </summary>
+public sealed record TrayHotKey(uint Mods, uint VirtualKey, Action OnPressed);
+
+/// <summary>
 /// 系统托盘图标（Win32 Shell_NotifyIconW）。
 ///
 /// 为什么不用 WinForms NotifyIcon：WinUI 3 项目不引 WinForms，且这类 App 的托盘
@@ -29,8 +35,10 @@ public sealed class TrayIcon : IDisposable
     private const uint WmContextMenu = 0x007B;
     private const uint WmLButtonUp = 0x0202;
     private const uint WmLButtonDblClk = 0x0203;
+    private const uint WmHotKey = 0x0312;
 
     private const int IconId = 1;
+    private const int HotKeyId = 1;
     private const uint NifMessage = 0x0001;
     private const uint NifIcon = 0x0002;
     private const uint NifTip = 0x0004;
@@ -59,6 +67,7 @@ public sealed class TrayIcon : IDisposable
     private readonly Action<int> _onCommand;
     private readonly Action _onActivate;
     private readonly string _iconPath;
+    private readonly TrayHotKey? _hotKey;
     private readonly ManualResetEventSlim _ready = new(false);
     // 气泡文本无法直接塞进 PostMessage 的 IntPtr 参数，走队列由消息线程取。
     private readonly ConcurrentQueue<(string Title, string Text)> _balloons = new();
@@ -73,14 +82,16 @@ public sealed class TrayIcon : IDisposable
     /// <param name="items">右键菜单项。</param>
     /// <param name="onCommand">菜单项被选中的 Id。</param>
     /// <param name="onActivate">左键单击/双击托盘图标。</param>
+    /// <param name="hotKey">可选的全局热键（注册在托盘消息窗口上）；为 null 则不注册。</param>
     public TrayIcon(string iconPath, string tooltip, IReadOnlyList<TrayMenuItem> items,
-                    Action<int> onCommand, Action onActivate)
+                    Action<int> onCommand, Action onActivate, TrayHotKey? hotKey = null)
     {
         _iconPath = iconPath ?? "";
         _tooltip = tooltip ?? "DeskNest";
         _items = items ?? Array.Empty<TrayMenuItem>();
         _onCommand = onCommand ?? (_ => { });
         _onActivate = onActivate ?? (() => { });
+        _hotKey = hotKey;
 
         _thread = new Thread(Run)
         {
@@ -190,6 +201,14 @@ public sealed class TrayIcon : IDisposable
         else
             Log.Info("托盘图标已创建");
 
+        if (_hotKey is not null)
+        {
+            if (RegisterHotKey(_hwnd, HotKeyId, _hotKey.Mods, _hotKey.VirtualKey))
+                Log.Info($"全局热键已注册（mods={_hotKey.Mods} vk={_hotKey.VirtualKey}）");
+            else
+                Log.Warn($"全局热键注册失败（可能被其他程序占用）：{Marshal.GetLastWin32Error()}");
+        }
+
         _ready.Set();
 
         var msg = new MSG();
@@ -222,6 +241,13 @@ public sealed class TrayIcon : IDisposable
             case WmShowBalloon:
                 self?.PumpBalloon();
                 return IntPtr.Zero;
+            case WmHotKey:
+                if (self?._hotKey is not null)
+                {
+                    try { self._hotKey.OnPressed(); }
+                    catch (Exception ex) { Log.Warn("全局热键回调异常：" + ex.Message); }
+                }
+                return IntPtr.Zero;
             case WmClose:
                 DestroyWindow(hwnd);
                 return IntPtr.Zero;
@@ -229,6 +255,7 @@ public sealed class TrayIcon : IDisposable
             {
                 if (self is not null)
                 {
+                    if (self._hotKey is not null) UnregisterHotKey(hwnd, HotKeyId);
                     var data = NewData(hwnd);
                     data.uFlags = 0;
                     Shell_NotifyIconW(NimDelete, ref data);
@@ -423,6 +450,12 @@ public sealed class TrayIcon : IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyIcon(IntPtr hIcon);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr GetModuleHandle(string? lpModuleName);
