@@ -570,14 +570,7 @@ public sealed partial class WidgetWindow : Window
             var captured = todo;
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 2, 0, 2) };
             var check = new CheckBox { MinWidth = 0, VerticalAlignment = VerticalAlignment.Center };
-            check.Checked += (_, _) =>
-            {
-                captured.IsDone = true;
-                captured.CompletedAt = DateTimeOffset.Now;
-                App.Repo?.Upsert(captured);
-                App.Log($"组件：完成待办「{captured.Title}」");
-                BuildTodo();
-            };
+            check.Checked += (_, _) => CompleteTodo(captured);
             var text = new TextBlock
             {
                 Text = captured.Title,
@@ -587,14 +580,124 @@ public sealed partial class WidgetWindow : Window
                 MaxWidth = Math.Max(120, _widget.Width - 90)
             };
             if (captured.Priority == 2) text.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+            // 点标题弹出编辑菜单（截止 / 提醒 / 重复）——WPF 版有这四个胶囊，WinUI 版此前缺失。
+            text.ContextFlyout = BuildTodoFlyout(captured);
             row.Children.Add(check);
             row.Children.Add(text);
+            // 截止 / 重复标记
+            if (captured.DueAt is not null)
+            {
+                var dueText = captured.DueAt.Value.LocalDateTime.ToString("M/d HH:mm");
+                var overdue = captured.DueAt.Value < DateTimeOffset.Now;
+                var dueBlock = Text(overdue ? "⚠ " + dueText : "⏰ " + dueText, 10.5, secondary: !overdue);
+                if (overdue) dueBlock.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.OrangeRed);
+                row.Children.Add(dueBlock);
+            }
+            if (captured.Repeat is not ("None" or ""))
+                row.Children.Add(Text("↻", 11, secondary: true));
             Content.Children.Add(row);
         }
 
         var done = App.Repo.Todos().Count(t => t.IsDone);
-        Content.Children.Add(Text($"已完成 {done} 项", 11, secondary: true));
+        Content.Children.Add(Text($"已完成 {done} 项 · 右键待办可设截止/提醒/重复", 11, secondary: true));
     }
+
+    /// <summary>完成待办：写完成状态；重复任务自动生成下一轮（避免重复生成同名同期任务）。</summary>
+    private void CompleteTodo(TodoRecord todo)
+    {
+        todo.IsDone = true;
+        todo.CompletedAt = DateTimeOffset.Now;
+        App.Repo?.Upsert(todo);
+        App.Log($"组件：完成待办「{todo.Title}」");
+
+        var next = TodoReminderEngine.NextOccurrence(todo, DateTimeOffset.Now);
+        if (next is not null)
+        {
+            var dup = App.Repo?.Todos().Any(t => !t.IsDone && t.Title == next.Title
+                && t.DueAt == next.DueAt) == true;
+            if (!dup)
+            {
+                App.Repo?.Upsert(next);
+                App.Log($"组件：重复任务生成下一轮「{next.Title}」截止 {next.DueAt:yyyy-MM-dd HH:mm}");
+            }
+        }
+        BuildTodo();
+    }
+
+    /// <summary>待办右键菜单：截止预设 / 提醒提前量 / 重复周期，改动即时落库并刷新。</summary>
+    private MenuFlyout BuildTodoFlyout(TodoRecord t)
+    {
+        var flyout = new MenuFlyout();
+
+        var due = new MenuFlyoutSubItem { Text = "截止日期" };
+        (string Label, DateTimeOffset? When)[] presets =
+        {
+            ("今天 18:00", TodayAt(18, 0)),
+            ("明天 09:00", TodayAt(9, 0).AddDays(1)),
+            ("下周一 09:00", NextWeekday(9, 0)),
+            ("清除", null)
+        };
+        foreach (var (label, when) in presets)
+        {
+            var item = new MenuFlyoutItem { Text = label };
+            item.Click += (_, _) =>
+            {
+                t.DueAt = when;
+                App.Repo?.Upsert(t);
+                App.Log($"组件：待办「{t.Title}」截止设为 {label}");
+                BuildTodo();
+            };
+            due.Items.Add(item);
+        }
+        flyout.Items.Add(due);
+
+        var remind = new MenuFlyoutItem { Text = "提醒 · " + ReminderLabel(t) };
+        remind.Click += (_, _) =>
+        {
+            int[] options = { -1, 0, 5, 30, 60, 1440 };
+            var i = Array.IndexOf(options, t.RemindMinutesBefore);
+            t.RemindMinutesBefore = options[(i + 1 + options.Length) % options.Length];
+            App.Repo?.Upsert(t);
+            BuildTodo();
+        };
+        flyout.Items.Add(remind);
+
+        var repeat = new MenuFlyoutItem { Text = "重复 · " + RepeatLabel(t) };
+        repeat.Click += (_, _) =>
+        {
+            string[] options = { "None", "Daily", "Weekly", "Monthly", "Lunar" };
+            var i = Array.IndexOf(options, t.Repeat);
+            t.Repeat = options[(i + 1 + options.Length) % options.Length];
+            App.Repo?.Upsert(t);
+            BuildTodo();
+        };
+        flyout.Items.Add(repeat);
+        return flyout;
+    }
+
+    private static DateTimeOffset TodayAt(int hour, int minute)
+    {
+        var now = DateTimeOffset.Now;
+        return new DateTimeOffset(now.Year, now.Month, now.Day, hour, minute, 0, now.Offset);
+    }
+
+    private static DateTimeOffset NextWeekday(int hour, int minute)
+    {
+        var d = TodayAt(hour, minute).AddDays(1);
+        while (d.DayOfWeek != DayOfWeek.Monday) d = d.AddDays(1);
+        return d;
+    }
+
+    private static string ReminderLabel(TodoRecord t) => t.RemindMinutesBefore switch
+    {
+        < 0 => "不提醒", 0 => "准点", 5 => "提前5分", 30 => "提前30分", 60 => "提前1时", 1440 => "提前1天",
+        _ => $"提前{t.RemindMinutesBefore}分"
+    };
+
+    private static string RepeatLabel(TodoRecord t) => t.Repeat switch
+    {
+        "Daily" => "每天", "Weekly" => "每周", "Monthly" => "每月", "Lunar" => "农历", _ => "不重复"
+    };
 
     // --- QuickNote：便签 ---
     private void BuildNotes()

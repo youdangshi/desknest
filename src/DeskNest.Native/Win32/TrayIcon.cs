@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using DeskNest.Core;
 
@@ -20,6 +21,7 @@ public sealed class TrayIcon : IDisposable
     private const string WindowClassName = "DeskNestTrayMessageWindow";
     private const uint WmUser = 0x0400;
     private const uint WmTrayCallback = WmUser + 1;
+    private const uint WmShowBalloon = WmUser + 2;
     private const uint WmClose = 0x0010;
     private const uint WmDestroy = 0x0002;
     private const uint WmNull = 0x0000;
@@ -32,6 +34,8 @@ public sealed class TrayIcon : IDisposable
     private const uint NifMessage = 0x0001;
     private const uint NifIcon = 0x0002;
     private const uint NifTip = 0x0004;
+    private const uint NifInfo = 0x0010;
+    private const uint NiiFInfo = 0x0001;
     private const uint NimAdd = 0x0000;
     private const uint NimModify = 0x0001;
     private const uint NimDelete = 0x0002;
@@ -56,6 +60,8 @@ public sealed class TrayIcon : IDisposable
     private readonly Action _onActivate;
     private readonly string _iconPath;
     private readonly ManualResetEventSlim _ready = new(false);
+    // 气泡文本无法直接塞进 PostMessage 的 IntPtr 参数，走队列由消息线程取。
+    private readonly ConcurrentQueue<(string Title, string Text)> _balloons = new();
 
     private IntPtr _hwnd;
     private IntPtr _iconHandle;
@@ -103,6 +109,39 @@ public sealed class TrayIcon : IDisposable
         }
         catch (Exception ex) { Log.Warn("托盘提示更新异常：" + ex.Message); }
     }
+
+    /// <summary>
+    /// 弹一条托盘气泡（如"该做啦：交周报"）。线程安全：入队后通知消息线程去发，
+    /// 避免跨线程直接操作归消息线程所有的 NOTIFYICONDATA。
+    /// </summary>
+    public void ShowBalloon(string title, string text)
+    {
+        if (_disposed || _hwnd == IntPtr.Zero) return;
+        _balloons.Enqueue((title ?? "桌巢 DeskNest", text ?? ""));
+        PostMessage(_hwnd, WmShowBalloon, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    /// <summary>在消息线程上真正投递气泡（只被 WndProc 调用）。</summary>
+    private void PumpBalloon()
+    {
+        while (_balloons.TryDequeue(out var b))
+        {
+            try
+            {
+                var data = NewData(_hwnd);
+                data.uFlags = NifInfo;
+                data.szInfoTitle = Truncate(b.Title, 63);
+                data.szInfo = Truncate(b.Text, 255);
+                data.dwInfoFlags = NiiFInfo;
+                if (!Shell_NotifyIconW(NimModify, ref data))
+                    Log.Warn("托盘气泡投递失败");
+            }
+            catch (Exception ex) { Log.Warn("托盘气泡异常：" + ex.Message); }
+        }
+    }
+
+    private static string Truncate(string s, int max) =>
+        string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s[..max]);
 
     private void Run()
     {
@@ -180,6 +219,9 @@ public sealed class TrayIcon : IDisposable
                     self.FireActivate();
                 return IntPtr.Zero;
             }
+            case WmShowBalloon:
+                self?.PumpBalloon();
+                return IntPtr.Zero;
             case WmClose:
                 DestroyWindow(hwnd);
                 return IntPtr.Zero;

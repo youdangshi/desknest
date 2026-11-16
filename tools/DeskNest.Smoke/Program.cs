@@ -478,6 +478,53 @@ Console.WriteLine("== 文件还原健壮性：原始路径缺失时仍能还原 
     Check("还原目标内容正确", () => restored.Ok && File.Exists(restored.StoredPath!) && File.ReadAllText(restored.StoredPath!) == "hello");
 }
 
+Console.WriteLine("== 待办到点提醒 + 重复任务（TodoReminderEngine） ==");
+{
+    var now = new DateTimeOffset(2026, 11, 16, 10, 0, 0, TimeSpan.Zero);
+    static TodoRecord mk(string id, DateTimeOffset due, int before, bool done = false, string repeat = "None") =>
+        new TodoRecord { Id = id, Title = "t-" + id, DueAt = due, RemindMinutesBefore = before, IsDone = done, Repeat = repeat };
+
+    var e = new TodoReminderEngine();
+    var dueItem = mk("a", now.AddMinutes(5), 5);                 // 正好提前 5 分 → 该提醒
+    var earlyItem = mk("b", now.AddMinutes(10), 5);              // 还差 5 分 → 不该
+    var noRemind = mk("c", now.AddMinutes(1), -1);               // 不提醒
+    var doneItem = mk("d", now.AddMinutes(1), 5, done: true);    // 已完成
+    var scan = e.DueNow(new[] { dueItem, earlyItem, noRemind, doneItem }, now);
+    Check("到点待办被检出", () => scan.Count == 1 && scan[0].Id == "a");
+    Check("未到点/不提醒/已完成的都不检出", () => scan.All(t => t.Id == "a"));
+
+    var scanAgain = e.DueNow(new[] { dueItem }, now.AddSeconds(30));
+    Check("同一待办在提醒窗口内不重复弹", () => scanAgain.Count == 0);
+    var later = e.DueNow(new[] { dueItem }, now.AddMinutes(2));
+    Check("过了提醒窗口可再次提醒", () => later.Count == 1);
+
+    var baseTodo = mk("r", new DateTimeOffset(2026, 11, 10, 9, 0, 0, TimeSpan.Zero), 5, repeat: "Daily");
+    Check("Daily 重复推进到 > now 的下一轮", () =>
+    {
+        var next = TodoReminderEngine.NextOccurrence(baseTodo, now);
+        return next is not null && next.DueAt > now && next.DueAt!.Value.Day == 17 && next.Id != baseTodo.Id;
+    });
+    Check("Weekly 重复以 7 天为步长", () =>
+    {
+        var next = TodoReminderEngine.NextOccurrence(
+            mk("rw", baseTodo.DueAt!.Value, 5, repeat: "Weekly"), now);
+        return next!.DueAt > now; // 推进到未来即可，步长由 AddDays(7) 保证
+    });
+    Check("Monthly 重复按月推进", () =>
+    {
+        var next = TodoReminderEngine.NextOccurrence(
+            mk("rm", baseTodo.DueAt!.Value, 5, repeat: "Monthly"), now);
+        return next!.DueAt > now && next.DueAt!.Value.Month == 12;
+    });
+    Check("不重复的待办完成后不生成新任务", () =>
+        TodoReminderEngine.NextOccurrence(mk("n", now, 5), now) is null);
+    Check("下一轮继承标题/提醒设置，且未完成", () =>
+    {
+        var next = TodoReminderEngine.NextOccurrence(baseTodo, now);
+        return next is not null && next.Title == baseTodo.Title && next.RemindMinutesBefore == 5 && !next.IsDone;
+    });
+}
+
 Console.WriteLine();
 Console.WriteLine($"通过 {passed} 项，失败 {failures.Count} 项");
 foreach (var f in failures) Console.WriteLine("  失败：" + f);

@@ -536,3 +536,33 @@ WinUI 3 版此前没有托盘，`MainWindow` 关闭按钮 = 真退出，误关�
 搜索索引，正常）里有 5 个 hidden 测试盒（"演示收纳盒"/"新收纳盒"，10-17~10-23 开发期创建、
 items=0）+ 2 个不可见测试组件，是历史自验残留，污染概览统计（显示"5 个收纳盒"但全隐藏）。
 按"个人文件不擅自删"的约定，仅报告，待用户确认后清理。
+
+### 11.15 待办到点提醒（2026-11-16 19:5x）—— HANDOFF 第 3 条核心缺口
+
+补上挂了很久的"待办到点提醒没接"：`PetEngine.RemindTodo` 此前只有演示调用，没有定时器，
+`Repeat` 也不生成下一条。按"纯逻辑抽 Core + 界面只调度呈现"的原则做成完整闭环：
+
+**Core 层**（`src/DeskNest.Core/Services/TodoReminderEngine.cs`，新增、纯逻辑）：
+- `DueNow(todos, now)`：`DueAt - RemindMinutesBefore <= now <= DueAt + 1min`、未完成/未归档/
+  有截止/设了提醒时才返回；`(id,dueAt)` 在 1 分钟窗口内去重，防每轮扫描重复弹。
+- `NextOccurrence(todo, now)`：完成重复任务后生成下一轮，截止从 DueAt 推进到 `> now` 的最近一轮
+  （Daily/Weekly/Monthly；Lunar 沿用项目既有约定用 29 天近似），新 id、继承标题/提醒/颜色/步骤。
+- `Prune(now)`：清理两天前的已提醒记录，防字典无限增长。
+
+**Native 托盘**：`TrayIcon.ShowBalloon(title, text)`——气泡文本走 `ConcurrentQueue` + `PostMessage`
+自定义消息，由消息线程投递 `NIM_MODIFY + NIF_INFO`（跨线程不直接碰归消息线程所有的 NOTIFYICONDATA）。
+
+**WinUI**：`App.InitReminders()` 用 `DispatcherQueueTimer`（静态强引用防 GC）每 60 秒扫一次，
+启动即扫一次；到点经托盘气泡提示 + 日志。待办组件补全交互：显示截止/重复标记，右键标题弹菜单设
+截止（今天18点/明天9点/下周一9点/清除）、提前量（不提醒→准点→5分→30分→1时→1天）、重复周期；
+勾选完成时自动生成下一轮（并按 title+dueAt 去重）。
+
+**自验**：冒烟 108 → **117/117**（新增 9 条：到点判断/去重/窗口/Daily-Weekly-Monthly 推进/继承字段）；
+全线编译 0 错误；MSIX 真机冷启动日志 `待办提醒已启动（每 60 秒扫描）`；插一条到点待办重启后，
+日志出现 `待办提醒：自验-到点提醒2（截止 11月16日 19:56）`——**到点检出 + 气泡投递链路真机通过**。
+自验待办已删除、测试进程已结束。
+
+**构建环境插曲**：本会话 PowerShell 工具无法把原生 exe 当命令执行（makeappx 被当"文档"），
+且 `LOCALAPPDATA`/`PUBLIC` 环境变量为空导致 NuGet restore `path1` 报错。解法：编译用
+`--no-restore`，makeappx 走 Bash + `MSYS2_ARG_CONV_EXCL="*"`（否则 `/d` 被 MSYS 转成 `D:/`）。
+打包成功 91.5 MB。这些是环境问题，非代码缺陷。

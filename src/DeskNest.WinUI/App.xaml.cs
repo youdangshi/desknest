@@ -165,6 +165,13 @@ public partial class App : Application
     /// <summary>真退出流程中：主窗口的关窗拦截据此放行，不再隐藏。</summary>
     internal static bool IsExiting;
 
+    /// <summary>
+    /// 待办提醒定时器 + 引擎。必须静态强引用：局部变量会被 GC 回收，Tick 永远不来
+    /// （项目里 SearchPage 的 DispatcherQueueTimer 已经踩过两次）。
+    /// </summary>
+    private static Microsoft.UI.Dispatching.DispatcherQueueTimer? _reminderTimer;
+    private static readonly DeskNest.Core.Services.TodoReminderEngine ReminderEngine = new();
+
     /// <summary>桌面盒/组件是否处于临时隐藏（托盘菜单切换，不改数据库）。</summary>
     private static bool _layerHidden;
 
@@ -218,6 +225,44 @@ public partial class App : Application
             Log("托盘已初始化");
         }
         catch (Exception ex) { Log("托盘初始化失败：" + ex); }
+    }
+
+    /// <summary>
+    /// 待办到点提醒：每 60 秒扫一次 Repo.Todos()，到点的经托盘气泡提示。
+    /// 用 DispatcherQueueTimer 且静态持有，Tick 在 UI 线程上，可直接读 Repo。
+    /// </summary>
+    private static void InitReminders()
+    {
+        try
+        {
+            if (_uiQueue is null) { Log("提醒未启动：UI 队列为空"); return; }
+            _reminderTimer = _uiQueue.CreateTimer();
+            _reminderTimer.Interval = TimeSpan.FromSeconds(60);
+            _reminderTimer.IsRepeating = true;
+            _reminderTimer.Tick += (_, _) => ScanReminders();
+            _reminderTimer.Start();
+            ScanReminders(); // 启动即扫一次，别让已经到点的待办白等 60 秒
+            Log("待办提醒已启动（每 60 秒扫描）");
+        }
+        catch (Exception ex) { Log("提醒启动失败：" + ex); }
+    }
+
+    private static void ScanReminders()
+    {
+        try
+        {
+            var todos = Repo?.Todos() ?? new();
+            var now = DateTimeOffset.Now;
+            var due = ReminderEngine.DueNow(todos, now);
+            foreach (var t in due)
+            {
+                var when = t.DueAt!.Value.LocalDateTime.ToString("M月d日 HH:mm");
+                _tray?.ShowBalloon("该做啦：" + t.Title, $"截止 {when}" + (t.Repeat != "None" ? " · 重复任务" : ""));
+                Log($"待办提醒：{t.Title}（截止 {when}）");
+            }
+            ReminderEngine.Prune(now);
+        }
+        catch (Exception ex) { Log("扫描提醒失败：" + ex.Message); }
     }
 
     private static void OnTrayCommand(int id)
@@ -279,6 +324,7 @@ public partial class App : Application
     {
         Log("ExitApp: begin");
         IsExiting = true;
+        try { _reminderTimer?.Stop(); _reminderTimer = null; } catch (Exception ex) { Log("提醒定时器清理失败：" + ex.Message); }
         try { _tray?.Dispose(); _tray = null; } catch (Exception ex) { Log("托盘清理失败：" + ex.Message); }
         try
         {
@@ -337,6 +383,7 @@ public partial class App : Application
 
             _uiQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
             InitTray();
+            InitReminders();
 
             // P2：从数据库恢复所有"显示中"的盒子（与 WPF 版同库，位置/内容互通）；
             // 库里一个都没有时放一个演示盒子，保证有东西可看。
