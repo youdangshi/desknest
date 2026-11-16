@@ -77,18 +77,21 @@ public sealed class FileOps
     }
 
     /// <summary>删除盒内条目 = 把文件还原回原位置；原目录不存在则回退桌面。</summary>
-    public OpResult RestoreToOriginal(string storedPath, string originalPath)
+    public OpResult RestoreToOriginal(string storedPath, string? originalPath)
     {
         try
         {
             if (!Exists(storedPath)) return OpResult.Fail($"存储文件不存在：{storedPath}");
-            var dir = Path.GetDirectoryName(originalPath);
+            // 原始路径可能缺失（老数据 / 记录不全）：退回用存储路径的文件名还原到桌面，
+            // 不能让 Path.GetFileName(null) → Path.Combine 抛异常把"能还原的文件"变成"移出失败"。
+            var effectiveOriginal = string.IsNullOrWhiteSpace(originalPath) ? storedPath : originalPath;
+            var dir = Path.GetDirectoryName(effectiveOriginal);
             if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
             {
                 dir = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
                 Log.Info($"原目录不存在，回退桌面：{dir}");
             }
-            var target = UniquePath(dir, Path.GetFileName(originalPath));
+            var target = UniquePath(dir, Path.GetFileName(effectiveOriginal) ?? Path.GetFileName(storedPath) ?? "restored");
             _repo.Journal("restore", new { stored = storedPath, target });
             MoveOrCopy(storedPath, target);
             return OpResult.Success(target);

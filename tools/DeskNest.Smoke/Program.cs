@@ -277,7 +277,7 @@ try { Directory.Delete(root, true); } catch { }
 Console.WriteLine("== 组导航：单选择器 + 移出/排序（DeskBox 规范，docs/26 §1） ==");
 // 规范要点：组里只有 1 个成员时不显示选择器；条目顺序 = 组成员顺序；当前成员只有一个勾。
 var gsIds = "a;b;c";
-var gsEntries = DeskNest.App.Ui.GroupSelector.Build(gsIds, "b", id => id switch { "a" => "工作", "b" => "学习", "c" => null });
+var gsEntries = DeskNest.App.Ui.GroupSelector.Build(gsIds, "b", id => id switch { "a" => "工作", "b" => "学习", "c" => null, _ => null });
 Check("成员记录缺失时跳过而不占位（c 没有名字 → 只剩 2 项）", () => gsEntries.Count == 2);
 Check("条目顺序跟组成员顺序一致", () => gsEntries[0].BoxId == "a" && gsEntries[1].BoxId == "b");
 Check("只有当前成员带 active 标记", () => gsEntries.Count(e => e.IsActive) == 1 && gsEntries[1].IsActive);
@@ -457,6 +457,27 @@ Console.WriteLine("== ⑧ 设置页分层：列表 → 二级页 → 分组折�
         Console.WriteLine("  FAIL  ⑧ 分层 UI 冒烟 —— 异常：" + uiError.Message);
     }
 }
+Console.WriteLine("== 文件还原健壮性：原始路径缺失时仍能还原 ==");
+{
+    var storeDir = Path.Combine(root, "store");
+    Directory.CreateDirectory(storeDir);
+    var storedFile = Path.Combine(storeDir, "还原测试.txt");
+    File.WriteAllText(storedFile, "hello");
+    // originalPath 传 null（老数据 / 记录不全）：应退回用存储路径的目录和文件名还原，
+    // 而不是让 Path.GetFileName(null) → Path.Combine 抛异常变成"移出失败"。
+    var restored = files.RestoreToOriginal(storedFile, null);
+    Check("原始路径为 null 时还原成功", () => restored.Ok);
+    // 目标若与存储文件同名会由 UniquePath 加 " (1)" 后缀，故只校验词干与扩展名。
+    Check("还原目标文件名取自存储路径", () =>
+    {
+        if (!restored.Ok) return false;
+        var name = Path.GetFileName(restored.StoredPath!);
+        return name.StartsWith("还原测试", StringComparison.Ordinal)
+            && string.Equals(Path.GetExtension(name), ".txt", StringComparison.Ordinal);
+    });
+    Check("还原目标内容正确", () => restored.Ok && File.Exists(restored.StoredPath!) && File.ReadAllText(restored.StoredPath!) == "hello");
+}
+
 Console.WriteLine();
 Console.WriteLine($"通过 {passed} 项，失败 {failures.Count} 项");
 foreach (var f in failures) Console.WriteLine("  失败：" + f);

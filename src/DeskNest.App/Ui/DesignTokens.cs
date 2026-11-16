@@ -46,7 +46,7 @@ public static class Tokens
     // 内容列宽：参考 DeskBox 在 1350px 宽窗口下约 810px 的正文列，避免行内控件被拉得太远
     public const double ContentMaxWidth = 840;
 
-    public new static readonly Thickness RowPadding = new(RowPaddingH, RowPaddingV, RowPaddingH, RowPaddingV);
+    public static readonly Thickness RowPadding = new(RowPaddingH, RowPaddingV, RowPaddingH, RowPaddingV);
     public static readonly Thickness CardPadding = new(0, Space4, 0, Space4);
     public static readonly Thickness PageTitleMargin = new(0, 0, 0, Space4);
 

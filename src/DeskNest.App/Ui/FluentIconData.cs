@@ -4,6 +4,8 @@
 // 这里只保存 20px regular 的矢量路径数据（不包含任何第三方应用代码），可自由用于本项目。
 // </auto-generated>
 
+#nullable enable  // Get() 返回 string?，需要显式开启注解上下文（生成文件无项目级 nullable）
+
 namespace DeskNest.App.Ui;
 
 /// <summary>Fluent 图标（20px regular）的矢量路径。键名与 Fluent 图标名一致（snake_case）。</summary>

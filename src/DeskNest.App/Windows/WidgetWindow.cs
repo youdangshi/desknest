@@ -243,7 +243,8 @@ public sealed partial class WidgetWindow : Window
             if (keep is null) return;
             var group = AppServices.Boxes.MergeWidgets(keep, _widget);
             app.Desktop.ReloadBoxes();
-            app.Desktop.SwitchGroupTo(group.Id, group.ActiveMemberId);
+            // MergeWidgets 保证合并后 ActiveMemberId 非空，属性类型是 string? 故显式兜底。
+            app.Desktop.SwitchGroupTo(group.Id, group.ActiveMemberId ?? keep.Id);
             Ui.Notifications.Toast($"已把「{_widget.Name}」并进「{group.Name}」，滚轮切换", 6);
         }
         catch (Exception ex)

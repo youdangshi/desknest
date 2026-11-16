@@ -609,7 +609,9 @@ public sealed partial class BoxWindow : Window
             // 保留被拖到的那个盒子（用户是"往它身上放"），把自己并进它的组
             var group = AppServices.Boxes.MergeInto(keep, _box);
             app.Desktop.ReloadBoxes();
-            app.Desktop.SwitchGroupTo(group.Id, group.ActiveMemberId);
+            // MergeInto 保证合并后 ActiveMemberId 非空（keep.Id 或成员之一）；
+            // 属性类型是 string?，这里显式兜底，避免给非空形参传可空值。
+            app.Desktop.SwitchGroupTo(group.Id, group.ActiveMemberId ?? keep.Id);
             Ui.Notifications.Toast($"已把「{_box.Name}」并进「{group.Name}」，点标题栏标签或滚轮切换", 6);
         }
         catch (Exception ex)

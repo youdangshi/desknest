@@ -832,7 +832,8 @@ public sealed partial class BoxWindow
             if (App.Current is App app)
             {
                 app.Desktop.ReloadBoxes();
-                app.Desktop.SwitchGroupTo(group.Id, group.ActiveMemberId);   // 只留当前选中的那个盒子可见
+                // MergeInto 保证 ActiveMemberId 非空，属性类型 string? 故显式兜底。
+                app.Desktop.SwitchGroupTo(group.Id, group.ActiveMemberId ?? _box.Id);   // 只留当前选中的那个盒子可见
             }
             Ui.Notifications.Toast($"已把「{other.Name}」并进「{group.Name}」，点标题栏标签或滚轮切换", 6);
         }

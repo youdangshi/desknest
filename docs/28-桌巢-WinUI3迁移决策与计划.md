@@ -502,3 +502,37 @@ WinUI 3 版此前没有托盘，`MainWindow` 关闭按钮 = 真退出，误关�
 （Dispose 干净收尾，无卡死无崩溃）。编译 0 错误；MSIX 打包 87.3 MB 成功，解包确认根目录与
 `Assets\` 下均有 desknest.ico。**右键菜单的点击命中与"关窗隐藏"的真机手感仍需用户亲手试**
 （本机鼠标注入无效，见 CONTEXT.md 约定）。
+
+### 11.14 一轮全面测试 + 问题修复（2026-11-16 19:4x）
+
+用户要求"测试一下看有哪些问题改一下"。把项目现有的测试手段全跑了一遍：
+
+| 手段 | 结果 |
+| --- | --- |
+| 冒烟验证器 `tools/DeskNest.Smoke` | 105/105 全过 → 加断言后 **108/108** |
+| `dotnet test`（17 个测试类） | testhost `Access Denied`（已知坑 3，环境问题非代码） |
+| 编译（Native / Core / WPF / WinUI 全线） | 0 错误 |
+| MSIX 冷启动真机（解包→注册→启动） | 启动链路干净：`主窗口关闭已拦截`、`托盘已初始化`、盒子/组件恢复、壁纸载入，无任何 FAILED/Exception |
+| 关窗隐藏真机（对主窗口发 WM_CLOSE） | `visible: True→False`、日志 `主窗口关闭按钮 → 隐藏到托盘`、进程存活 —— **关窗隐藏真机验证通过** |
+
+**修掉的问题**：
+1. **文件还原健壮性（真 bug，Core 层）**：`FileOps.RestoreToOriginal(stored, originalPath)` 在
+   `originalPath` 为 null（老数据 / 记录不全）时，`Path.GetFileName(null) → Path.Combine` 抛
+   `ArgumentNullException`，本可还原的文件变成"移出失败"。参数改 `string?`，空值回退用存储路径的
+   目录与文件名还原到原处；WinUI `BoxWindow` 的 CS8604 警告随之消失。冒烟新增 3 条断言固化。
+2. **合并盒/组件的可空传递（3 处 CS8604）**：`group.ActiveMemberId` 声明 `string?`，虽被
+   `MergeInto`/`MergeWidgets` 逻辑保证非空，直接传给非空形参仍是隐患 → 加 `?? keep.Id` 兜底。
+3. **编译噪音**：自动生成文件 `FluentIconData.cs` 补 `#nullable enable`（消 CS8669）；
+   `DesignTokens.RowPadding` 去掉多余 `new`（消 CS0109）；冒烟 `GroupSelector` 测试 switch 补
+   `_ => null`（消 CS8509）。WPF 侧警告 7 → 1。
+
+**有意保留、不修的**：
+- `WidgetWindow.Content` 遮蔽 `Window.Content`（CS0108）：XAML `x:Name="Content"` 生成字段，
+  50 处 `Content.Children` 引用，功能正常；改名高回归风险、低收益。
+- `app.manifest` 高 DPI 警告 WFO0003：manifest 配的是 PerMonitorV2（比 .NET 属性更精确），
+  且 WPF 是冻结维护线，改了反而可能降级。
+
+**发现待用户决定的数据问题（未擅自删除）**：用户库 `desknest.db`（1.73 GB，主要是 334 万条
+搜索索引，正常）里有 5 个 hidden 测试盒（"演示收纳盒"/"新收纳盒"，10-17~10-23 开发期创建、
+items=0）+ 2 个不可见测试组件，是历史自验残留，污染概览统计（显示"5 个收纳盒"但全隐藏）。
+按"个人文件不擅自删"的约定，仅报告，待用户确认后清理。
