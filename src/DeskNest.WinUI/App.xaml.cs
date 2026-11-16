@@ -407,8 +407,9 @@ public partial class App : Application
             InitTray();
             InitReminders();
 
-            // P2：从数据库恢复所有"显示中"的盒子（与 WPF 版同库，位置/内容互通）；
-            // 库里一个都没有时放一个演示盒子，保证有东西可看。
+            // P2：从数据库恢复所有"显示中"的盒子（与 WPF 版同库，位置/内容互通）。
+            // 库里为空时保持桌面干净：概览页已有「新建收纳盒」与各类组件引导，
+            // 不再造一个既不在库里、又删不掉的"演示盒"（早期自验兜底，正常使用时是有害的）。
             try
             {
                 var boxes = Repo?.Boxes().Where(b => !b.IsHidden).ToList() ?? new();
@@ -419,13 +420,7 @@ public partial class App : Application
                     BoxWindows.Add(win);
                     win.Activate();
                 }
-                if (boxes.Count == 0)
-                {
-                    var demo = new Windows.BoxWindow(new DeskNest.Core.BoxRecord { Name = "演示收纳盒" });
-                    BoxWindows.Add(demo);
-                    demo.Activate();
-                    Log("no boxes, demo BoxWindow activated");
-                }
+                if (boxes.Count == 0) Log("没有盒子：保持桌面干净，用概览页引导新建");
 
                 // P5：恢复显示中的桌面组件
                 var widgets = Repo?.Widgets().Where(w => w.IsVisible).ToList() ?? new();

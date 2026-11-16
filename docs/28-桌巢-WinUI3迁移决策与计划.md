@@ -599,3 +599,33 @@ Native 早有 `GlobalHotKey` 但 WinUI 线没接。`TrayIcon` 复用其 STA 消�
 - **真机验证**：Core 日志 `全局热键已注册（mods=2 vk=70）`；用 Python ctypes 发系统级
   Ctrl+F 后，WinUI 日志出现 `nav -> search` + `Ctrl+F：唤起搜索`。全链路通过。
 - 冒烟 117/117 保持全绿；编译 0 错误；MSIX 打包 91.5 MB 成功。
+
+### 11.17 推进到"可正常使用"：交付路径收尾（2026-11-17 08:0x）
+
+用户要求"推进到可以正常使用"。先站着新用户视角做真机全流程验证——功能层面
+（冷启动/托盘/提醒/各页/关窗隐藏/Ctrl+F 唤起）全部正常、零异常，所以障碍不在功能而在**交付层**：
+
+**修掉的交付问题**：
+1. **启动演示盒（开发兜底，有害）**：库里没盒子时每次启动造一个既不在库里、关掉下次又有、
+   与概览统计对不上的"演示收纳盒"。移除，改为记一行"没有盒子：保持桌面干净，用概览页引导新建"。
+   空态由概览页的「新建收纳盒」+ 七类组件入口承接，自洽。顺带清掉我测试时写进库的 1 条 hidden 演示盒。
+2. **README 误导**：原「安装与运行」写的是旧 WPF 版（下载 zip 双击 exe），WinUI 主线双击 exe 会崩。
+   重写为 WinUI 真实步骤：开发者模式 → `build-shell.cmd` 一键打包+注册+启动 → 开始菜单/run-shell 启动 →
+   关窗=隐藏到托盘 → 托盘/Ctrl+F 唤回 → 关于页开关自启；并标注哪些快捷键是冻结版才有、尚未移植。
+   顺手修掉文件头重复的 `# 桌巢 DeskNest`。
+3. **安装脚本临时目录累积**：`install-shell.ps1` 原来每次 `DeskNestShellLayout_HHMMSS`，旧的清理还被安全钩子拦。
+   改成固定目录 `%LOCALAPPDATA%\DeskNest\AppPackage` + 覆盖式更新（旧目录移开为 .old 再尝试清理），
+   **纯 ASCII**（`powershell.exe -File` 按 ANSI 读 .ps1，中文字符串会导致解析错——项目已知坑 2 又踩一次）。
+4. **开机自启（桌面工具刚需）**：Native `AutoStart` 新增 `SetMsixEnabled/IsMsixEnabled`，
+   Run 项写 `explorer.exe shell:AppsFolder\<PFN>!App` 而非裸 exe（WinUI 必须 MSIX 身份启动）。
+   关于页加「开机自动启动」ToggleSwitch，取 `Package.Current.Id.FamilyName`（用 `global::` 限定，
+   否则撞 `DeskNest.WinUI.Windows` 命名空间），失败时抑制回调回滚。
+
+**真机验证**：
+- 新版 install-shell.ps1 跑通：注销旧包 → 固定目录解压 → 注册 → 启动，输出 Installed/Launched。
+- 安装后冷启动：日志 `boxes=0`、无演示盒（窗口枚举只剩主窗口）、托盘/提醒正常。
+- 自启：Run 项写入命令后用该命令原样拉起应用成功（日志确认启动链路），测试后已删除测试 Run 值。
+- 冒烟 117/117 全绿，编译 0 错误，MSIX 91.5 MB 打包成功。
+
+**保留的现状（诚实告知用户）**：unsigned MSIX 仍需开发者模式；零门槛双击安装需要代码签名证书，
+本项目当前不具备。README 已如实说明，不假装已解决。

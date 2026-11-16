@@ -44,6 +44,32 @@ public sealed partial class AboutPage : Page
         info.Children.Add(PageKit.InfoRow("日志文件", App.LogPath));
         Host.Children.Add(PageKit.Card("版本信息", info));
 
+        // 开机自启（MSIX 版走 shell:AppsFolder，不能写裸 exe 路径）
+        var autoStart = new ToggleSwitch { OnContent = "已开启", OffContent = "已关闭" };
+        var suppressToggle = false; // 回滚时不触发事件，避免递归
+        try
+        {
+            autoStart.IsOn = DeskNest.Native.Win32.AutoStart.IsMsixEnabled();
+        }
+        catch { autoStart.IsOn = false; }
+        autoStart.Toggled += (_, _) =>
+        {
+            if (suppressToggle) return;
+            string? pfn = null;
+            try { pfn = global::Windows.ApplicationModel.Package.Current.Id.FamilyName; }
+            catch (Exception ex) { App.Log("取包标识失败（可能不是 MSIX 运行）：" + ex.Message); }
+            var ok = DeskNest.Native.Win32.AutoStart.SetMsixEnabled(autoStart.IsOn, pfn);
+            if (!ok)
+            {
+                App.Log("设置开机自启失败，已回滚开关");
+                suppressToggle = true;
+                autoStart.IsOn = !autoStart.IsOn;
+                suppressToggle = false;
+            }
+        };
+        Host.Children.Add(PageKit.Card("启动", PageKit.ActionRow(
+            "开机自动启动", "登录后自动运行桌巢，桌面盒与组件随之恢复", autoStart)));
+
         var actions = PageKit.Column(10);
         actions.Children.Add(PageKit.ActionRow("打开日志目录", "反馈问题时把最新的 desknest.log / winui.log 发过来",
             PageKit.Btn("打开", (_, _) => OpenFolder(Path.GetDirectoryName(App.LogPath) ?? AppPaths.DataRoot))));
