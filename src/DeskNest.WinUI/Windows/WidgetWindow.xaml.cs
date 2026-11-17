@@ -87,7 +87,20 @@ public sealed partial class WidgetWindow : Window
             App.WidgetWindows.Remove(this);
             App.Log($"WidgetWindow[{_widget.Name}] Closed");
         };
+
+        // Alt+F4 等系统关闭同样写回 IsVisible，避免重启后组件复活。
+        AppWindow.Closing += (_, e) =>
+        {
+            if (_closingByApp || App.IsExiting) return;
+            _widget.IsVisible = false;
+            try { App.Repo?.Upsert(_widget); } catch (Exception ex) { App.Log("系统关闭回写失败：" + ex.Message); }
+            App.NotifyWidgetsChanged();
+            App.Log($"WidgetWindow[{_widget.Name}] 系统关闭 → 记隐藏");
+        };
     }
+
+    /// <summary>由 隐藏/删除 流程置位，关闭时不重复回写状态。</summary>
+    private bool _closingByApp;
 
     // ---------- 窗口骨架 ----------
 
@@ -464,6 +477,7 @@ public sealed partial class WidgetWindow : Window
         _widget.IsVisible = false;
         try { App.Repo?.Upsert(_widget); } catch (Exception ex) { App.Log("隐藏组件保存失败：" + ex.Message); }
         App.NotifyWidgetsChanged();
+        _closingByApp = true;
         Close();
     }
 

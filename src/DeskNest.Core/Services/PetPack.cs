@@ -88,7 +88,7 @@ public static class PetPackStore
             {
                 if (string.IsNullOrEmpty(entry.Name)) continue;
                 var full = Path.GetFullPath(Path.Combine(target, entry.FullName));
-                if (!full.StartsWith(Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase)) continue;   // 防目录穿越
+                if (!FileOps.IsUnder(full, target)) continue;   // 防目录穿越（IsUnder 挡住兄弟目录前缀绕过）
                 Directory.CreateDirectory(Path.GetDirectoryName(full)!);
                 entry.ExtractToFile(full, overwrite: true);
             }

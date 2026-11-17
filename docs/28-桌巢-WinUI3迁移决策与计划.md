@@ -629,3 +629,49 @@ Native 早有 `GlobalHotKey` 但 WinUI 线没接。`TrayIcon` 复用其 STA 消�
 
 **保留的现状（诚实告知用户）**：unsigned MSIX 仍需开发者模式；零门槛双击安装需要代码签名证书，
 本项目当前不具备。README 已如实说明，不假装已解决。
+
+### 11.18 全代码库审查与修复（2026-11-17 08:2x）
+
+用户要求"重新审视一下代码"。三路并行审查 Native / Core / WinUI 全部源码（约 2 万行），
+先交叉验证并**分清主线与冻结线**：`KeyboardHook`（委托未强引用）、`PowerActions`（LUID 结构体 x64
+布局错误导致提权失效）、`PetPack` 在 WinUI 主线引用数均为 0，属已冻结的 WPF 线，本轮不动。
+
+**主线真实问题，已修**：
+
+1. **提醒去重窗口 == 扫描周期（我上一轮引入）**：`ReminderWindow=1min` 恰等于 60 秒扫描周期，
+   实际扫描只会更晚 → `now-last<1min` 几乎恒 false，去重失效、同一条反复弹；准点提醒的窗口
+   也正好 1 分钟，相位稍偏整段漏掉。改为 **HashSet 状态去重**（提醒过就不再返回），
+   `ReminderGrace=12h` 兜住错过场景，`Prune` 按 dueAt 跨天清理。冒烟用 61 秒/10 分钟真实间隔重写断言。
+2. **删盒子还原失败仍删库 → 文件成孤儿（数据丢失）**：`BoxService.Delete/DissolveToDesktop`
+   还原失败只记数仍 `_repo.DeleteBox`，item 记录一并消失。改为：成功项 `DeleteItem`，
+   失败项保留并标 `IsMissing=true`，**有失败就不删盒子**；调用方看到 `StillInDatabase=true`
+   自然提示"删除未完成"。新增失败路径冒烟。
+3. **备份还原 / 素材包路径穿越**：`StartsWith(root)` 可被 `..\DeskNest-evil\` 兄弟目录前缀绕过，
+   改用现成的 `FileOps.IsUnder`（带 `p+"\\"`）。新增前缀绕过断言。
+4. **Ctrl+F 长按重复触发**：`TrayIcon.RegisterHotKey` 自动 OR `MOD_NOREPEAT`，
+   `WM_HOTKEY` 分支校验 wParam==HotKeyId；App 侧用枚举替代魔法数字。
+   真机验证 `mods=16386`（0x4002=Control+NoRepeat），单次触发日志只出现一次。
+5. **Alt+F4 关闭盒子/组件不回写库**：自绘关闭按钮走 `HideBox/HideWidget` 写库，但 Alt+F4 的
+   `WM_CLOSE` 只从列表移除 → 库里仍记"显示中"，重启复活、UI 状态矛盾。给两个窗口加
+   `AppWindow.Closing`：系统关闭时写 `IsHidden/IsVisible`；主动的 隐藏/删除/退出 用
+   `_closingByApp` 或 `App.IsExiting` 放行（尤其删除后绝不能 Upsert 把已删记录插回去）。
+6. **搜索索引落盘原子性假保证**：`SaveSearchIndex` 在 `InTransaction` 内每 2000 条手动
+   `COMMIT/BEGIN`，第一批会把 `DELETE` 一起提交；后续失败外层 ROLLBACK 只回滚最后一批，
+   留下"旧索引已清空、新索引只有 2000 条"的残缺库。去掉中途提交，单事务全量落盘。
+   冒烟用"迭代到第 2 条抛异常"验证旧索引 3 条完整保留。
+7. **托盘隐藏态与主动打开不一致**：`ToggleDesktopLayer` 隐藏后从主窗口新建盒子/组件会直接可见，
+   但 `_layerHidden` 仍 true，托盘再点"显示"行为错乱。`OpenBox/OpenWidget` 加 `ClearLayerHidden()`，
+   并对已存在窗口显式 `AppWindow.Show()`（Activate 对隐藏窗口未必重新显示）。
+8. **低危**：BoxWindow 的 `_statusTimer` 在 Closed 时 Stop（对齐 WidgetWindow）；
+   SearchPage 的 CTS 换前先 Dispose；DataPage 备份去掉 `App.Backup!` 强解引用并捕获局部变量。
+
+**未修（有意，附理由）**：
+- Native 的 `KeyboardHook` 委托 GC、`LUID` 布局错误：`SetWindowsHookEx`/关机提权在 WinUI 主线未使用，
+  只影响冻结的 WPF 版；改动那版风险高、收益低。
+- `TodoReminderEngine.AdvanceMonths` 的 31 日漂移（AddMonths clamp 到 28）：需要产品决定短月策略
+  （跳到下月 1 日 / 保持 28 日），不擅自改语义。
+- journal 表只写不消费（无启动续做逻辑）：属未实现的设计目标，改动面大，记录待办。
+- `BackupService.Restore` 热覆盖 db：调用方在 WPF 冻结线，WinUI 未接还原入口。
+
+**验证**：冒烟 117 → **127/127**（新增 10 条：提醒真实间隔去重、删除失败路径、路径穿越、
+索引原子性）；全线编译 0 错误；MSIX 91.5 MB；真机冷启动零异常、无演示盒、Ctrl+F 单次触发正常。

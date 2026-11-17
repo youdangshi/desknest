@@ -87,8 +87,8 @@ public sealed class BackupService
                 if (string.IsNullOrEmpty(entry.Name)) continue;
                 var target = Path.Combine(AppPaths.DataRoot, entry.FullName);
                 var full = Path.GetFullPath(target);
-                if (!full.StartsWith(Path.GetFullPath(AppPaths.DataRoot), StringComparison.OrdinalIgnoreCase))
-                    continue;   // 防目录穿越
+                // 用 IsUnder 而非 StartsWith：后者会被 ..\DeskNest-evil\ 这类兄弟目录前缀绕过。
+                if (!FileOps.IsUnder(full, AppPaths.DataRoot)) continue;   // 防目录穿越
                 Directory.CreateDirectory(Path.GetDirectoryName(full)!);
                 entry.ExtractToFile(full, overwrite: true);
             }

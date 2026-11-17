@@ -13,15 +13,24 @@ namespace DeskNest.Core.Services;
 /// </summary>
 public sealed class TodoReminderEngine
 {
-    /// <summary>提醒后多久之内不再重复弹（防止每分钟扫描反复提醒同一条）。</summary>
-    public static readonly TimeSpan ReminderWindow = TimeSpan.FromMinutes(1);
-
-    private readonly Dictionary<string, DateTimeOffset> _remindedAt = new();
+    /// <summary>
+    /// 已到提醒点后最多再过多久仍算"该提醒"（用户关机/休眠错过后仍能补一次）。
+    /// 必须显著大于扫描周期 60 秒：早先用 1 分钟，准点提醒的窗口正好等于扫描间隔，
+    /// 相位稍偏就会整段落在两次扫描之间，永远不提醒。
+    /// </summary>
+    public static readonly TimeSpan ReminderGrace = TimeSpan.FromHours(12);
 
     /// <summary>
-    /// 扫描出此刻该提醒的待办：`now >= DueAt - 提前量` 且 `now &lt; DueAt + 宽限`，
+    /// 同一 (id, dueAt) 只提醒一次——**状态去重，不依赖时间窗**。
+    /// 早先用"1 分钟窗口 + now-last"去重，窗口恰等于调度器的 60 秒扫描周期，
+    /// 而实际扫描只会更晚，条件几乎恒为 false，导致同一条被反复弹。
+    /// </summary>
+    private readonly HashSet<string> _reminded = new();
+
+    /// <summary>
+    /// 扫描出此刻该提醒的待办：`DueAt - 提前量 &lt;= now &lt;= DueAt + ReminderGrace`，
     /// 未完成、未归档、有截止、设置了提醒（分钟数 &gt;= 0）。
-    /// 同一 (id, dueAt) 在 ReminderWindow 内只返回一次。
+    /// 同一 (id, dueAt) 只返回一次，直到完成生成下一轮（新 dueAt）或跨天 Prune。
     /// </summary>
     public List<TodoRecord> DueNow(IEnumerable<TodoRecord> todos, DateTimeOffset now)
     {
@@ -30,12 +39,10 @@ public sealed class TodoReminderEngine
         {
             if (t.IsDone || t.IsArchived || t.DueAt is null || t.RemindMinutesBefore < 0) continue;
             var fireAt = t.DueAt.Value - TimeSpan.FromMinutes(t.RemindMinutesBefore);
-            if (now < fireAt || now > t.DueAt.Value + ReminderWindow) continue;
+            if (now < fireAt || now > t.DueAt.Value + ReminderGrace) continue;
 
             var key = Key(t);
-            if (_remindedAt.TryGetValue(key, out var last) && now - last < ReminderWindow) continue;
-
-            _remindedAt[key] = now;
+            if (!_reminded.Add(key)) continue; // 已提醒过：与扫描周期无关，绝不重复
             due.Add(t);
         }
         return due;
@@ -94,8 +101,14 @@ public sealed class TodoReminderEngine
     /// <summary>清理已提醒记录（例如跨天时调用，避免字典无限增长）。</summary>
     public void Prune(DateTimeOffset now)
     {
-        foreach (var key in _remindedAt.Where(kv => now - kv.Value > TimeSpan.FromDays(2)).Select(kv => kv.Key).ToList())
-            _remindedAt.Remove(key);
+        // key 尾部是 dueAt 的 ISO 串，解析出来按天清理，避免集合无限增长。
+        foreach (var key in _reminded.ToList())
+        {
+            var bar = key.LastIndexOf('|');
+            if (bar < 0) { _reminded.Remove(key); continue; }
+            if (DateTimeOffset.TryParse(key[(bar + 1)..], out var due) && now - due > TimeSpan.FromDays(2))
+                _reminded.Remove(key);
+        }
     }
 
     private static string Key(TodoRecord t) => $"{t.Id}|{t.DueAt:o}";

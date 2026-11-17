@@ -102,10 +102,12 @@ public sealed partial class DataPage : Page
     private async Task CreateBackup()
     {
         if (_status is null) return;
+        if (App.Backup is null) { _status.Text = "备份服务未就绪"; return; }
         _status.Text = "正在备份…（文件多时可能要几秒）";
         try
         {
-            var info = await Task.Run(() => App.Backup!.Create("manual"));
+            var backup = App.Backup; // 捕获到局部变量，避免 Task 里再次解引用可空静态字段
+            var info = await Task.Run(() => backup.Create("manual"));
             _status.Text = $"已备份：{Path.GetFileName(info.Path)}（{OverviewPage.FormatSize(info.SizeBytes)}）";
             App.Log($"手动备份完成：{info.Path}");
             RefreshBackups();

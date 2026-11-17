@@ -203,8 +203,10 @@ public sealed class TrayIcon : IDisposable
 
         if (_hotKey is not null)
         {
-            if (RegisterHotKey(_hwnd, HotKeyId, _hotKey.Mods, _hotKey.VirtualKey))
-                Log.Info($"全局热键已注册（mods={_hotKey.Mods} vk={_hotKey.VirtualKey}）");
+            // 自动加 MOD_NOREPEAT：否则长按 Ctrl+F 会持续产生 WM_HOTKEY，反复唤起搜索。
+            var mods = _hotKey.Mods | (uint)GlobalHotKey.Mods.NoRepeat;
+            if (RegisterHotKey(_hwnd, HotKeyId, mods, _hotKey.VirtualKey))
+                Log.Info($"全局热键已注册（mods={mods} vk={_hotKey.VirtualKey}）");
             else
                 Log.Warn($"全局热键注册失败（可能被其他程序占用）：{Marshal.GetLastWin32Error()}");
         }
@@ -242,7 +244,8 @@ public sealed class TrayIcon : IDisposable
                 self?.PumpBalloon();
                 return IntPtr.Zero;
             case WmHotKey:
-                if (self?._hotKey is not null)
+                // 只响应自己注册的热键 id：同一窗口将来若注册了别的热键，不会被误触发。
+                if (wParam.ToInt64() == HotKeyId && self?._hotKey is not null)
                 {
                     try { self._hotKey.OnPressed(); }
                     catch (Exception ex) { Log.Warn("全局热键回调异常：" + ex.Message); }

@@ -89,9 +89,11 @@ public partial class App : Application
     /// <summary>打开（或聚焦）一个桌面组件。同一个组件只开一个窗口；隐藏的先取消隐藏。</summary>
     internal static Windows.WidgetWindow OpenWidget(DeskNest.Core.WidgetRecord widget)
     {
+        ClearLayerHidden(); // 同 OpenBox：主动打开组件即退出托盘的临时隐藏态
         var existing = WidgetWindows.FirstOrDefault(w => w.WidgetId == widget.Id);
         if (existing is not null)
         {
+            existing.AppWindow.Show();
             existing.Activate();
             return existing;
         }
@@ -125,9 +127,12 @@ public partial class App : Application
     /// </summary>
     internal static Windows.BoxWindow OpenBox(DeskNest.Core.BoxRecord box)
     {
+        // 用户主动打开盒子 → 桌面层应回到"显示"状态，否则托盘隐藏标志与新窗口实际可见不一致。
+        ClearLayerHidden();
         var existing = BoxWindows.FirstOrDefault(w => w.BoxId == box.Id);
         if (existing is not null)
         {
+            existing.AppWindow.Show(); // Activate 对隐藏窗口可能不重新显示，显式 Show
             existing.Activate();
             return existing;
         }
@@ -219,9 +224,9 @@ public partial class App : Application
                 new DeskNest.Native.Win32.TrayMenuItem(TrayExit, "退出桌巢")
             };
             // Ctrl+F 全局唤起搜索：热键注册在托盘的 STA 消息窗口上，回调切回 UI 线程。
-            // Mods.Control=0x2（Native GlobalHotKey.Mods.Control），VK_F=0x46。
+            // 用枚举而非魔法数字；MOD_NOREPEAT 由 TrayIcon 注册时自动加上，防长按重复触发。
             var searchHotKey = new DeskNest.Native.Win32.TrayHotKey(
-                0x0002, 0x46,
+                (uint)DeskNest.Native.Win32.GlobalHotKey.Mods.Control, /* VK_F */ 0x46,
                 () => _uiQueue?.TryEnqueue(() =>
                 {
                     OpenSearch();
@@ -318,6 +323,19 @@ public partial class App : Application
             try { Main?.FocusSearchIfCurrent(); }
             catch (Exception ex) { Log("搜索页聚焦失败：" + ex.Message); }
         });
+    }
+
+    /// <summary>
+    /// 用户从主窗口主动打开盒子/组件时，退出托盘的临时隐藏态，保证标志与实际可见性一致。
+    /// 不 Show 已有窗口（调用方自己 Show），只翻状态。
+    /// </summary>
+    private static void ClearLayerHidden()
+    {
+        if (_layerHidden)
+        {
+            _layerHidden = false;
+            Log("桌面层恢复显示（因主动打开盒子/组件）");
+        }
     }
 
     /// <summary>临时显示/隐藏所有桌面盒与组件（不动数据库里的 IsHidden/IsVisible）。</summary>

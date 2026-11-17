@@ -63,6 +63,28 @@ repo.Upsert(throwaway);
 var outcome = boxes.Delete(throwaway);
 Check("删除后记录不再存在", () => !outcome.StillInDatabase && repo.Box(throwaway.Id) is null);
 
+Console.WriteLine("== 删除盒子：还原失败不能丢文件记录 ==");
+{
+    var broken = new BoxRecord { Name = "还原失败盒" };
+    repo.Upsert(broken);
+    // 存储文件不存在 → RestoreToOriginal 必然失败，不能把 item 记录一起删掉成孤儿。
+    var orphan = new ItemRecord
+    {
+        BoxId = broken.Id, DisplayName = "还在存储区的文件",
+        StoredPath = Path.Combine(root, "does-not-exist", "x.txt"), SourcePath = ""
+    };
+    repo.Upsert(orphan);
+    var failedOutcome = boxes.Delete(broken);
+    Check("还原失败时盒子记录保留", () => failedOutcome.Failed == 1 && failedOutcome.StillInDatabase && repo.Box(broken.Id) is not null);
+    Check("还原失败时文件记录保留并标记缺失", () =>
+    {
+        var kept = repo.Items(broken.Id, false).FirstOrDefault(i => i.Id == orphan.Id);
+        return kept is not null && kept.IsMissing;
+    });
+    // 清理：测试残留，避免影响后面的统计类断言
+    repo.DeleteBox(broken.Id);
+}
+
 Console.WriteLine("== 拖拽合并的落点判定 ==");
 var self = new BoxHit("me", "本盒", 0, 0, 400, 500, null, true);
 var other = new BoxHit("other", "另一个", 600, 100, 320, 420, null, true);
@@ -493,10 +515,19 @@ Console.WriteLine("== 待办到点提醒 + 重复任务（TodoReminderEngine） 
     Check("到点待办被检出", () => scan.Count == 1 && scan[0].Id == "a");
     Check("未到点/不提醒/已完成的都不检出", () => scan.All(t => t.Id == "a"));
 
-    var scanAgain = e.DueNow(new[] { dueItem }, now.AddSeconds(30));
-    Check("同一待办在提醒窗口内不重复弹", () => scanAgain.Count == 0);
-    var later = e.DueNow(new[] { dueItem }, now.AddMinutes(2));
-    Check("过了提醒窗口可再次提醒", () => later.Count == 1);
+    // 真实调度是每 60 秒扫一次，且只会更晚；用 >= 扫描周期的时间戳验证不再重复。
+    var scanAgain = e.DueNow(new[] { dueItem }, now.AddSeconds(61));
+    Check("同一待办超过一个扫描周期仍不重复弹", () => scanAgain.Count == 0);
+    var muchLater = e.DueNow(new[] { dueItem }, now.AddMinutes(10));
+    Check("同一待办在 grace 内始终不重复弹", () => muchLater.Count == 0);
+    // 重复任务生成下一轮后 dueAt 变化，key 不同 → 是新的一次提醒。
+    var nextRound = mk("a", now, 5); // 新到期点已到（fireAt=now-5min）
+    Check("下一轮重复任务（新 dueAt）会提醒", () => e.DueNow(new[] { nextRound }, now).Count == 1);
+    // 准点提醒（提前 0 分钟）的窗口边界不能因扫描相位被整段漏掉
+    var e2 = new TodoReminderEngine();
+    var onTime = mk("p", now.AddSeconds(5), 0);
+    Check("准点提醒在截止后仍可检出（grace 远大于扫描周期）",
+        () => e2.DueNow(new[] { onTime }, now.AddSeconds(65)).Count == 1);
 
     var baseTodo = mk("r", new DateTimeOffset(2026, 11, 10, 9, 0, 0, TimeSpan.Zero), 5, repeat: "Daily");
     Check("Daily 重复推进到 > now 的下一轮", () =>
@@ -523,6 +554,44 @@ Console.WriteLine("== 待办到点提醒 + 重复任务（TodoReminderEngine） 
         var next = TodoReminderEngine.NextOccurrence(baseTodo, now);
         return next is not null && next.Title == baseTodo.Title && next.RemindMinutesBefore == 5 && !next.IsDone;
     });
+}
+
+Console.WriteLine("== 搜索索引落盘的原子性 ==");
+{
+    using var idxDb = new Db(Path.Combine(root, "index.db"));
+    var idxRepo = new Repository(idxDb);
+    var baseTime = new DateTime(2026, 1, 1);
+    idxRepo.SaveSearchIndex(new[]
+    {
+        new DeskNest.Core.Services.SearchService.IndexEntry("C:\\a.txt", false, 1, baseTime),
+        new DeskNest.Core.Services.SearchService.IndexEntry("C:\\b.txt", false, 2, baseTime),
+        new DeskNest.Core.Services.SearchService.IndexEntry("C:\\c.txt", false, 3, baseTime)
+    });
+    Check("正常落盘后索引有 3 条", () => idxRepo.LoadSearchIndex().Count == 3);
+
+    // 迭代到第 2 条时抛异常：单事务下应整体回滚，旧索引 3 条仍在
+    IEnumerable<DeskNest.Core.Services.SearchService.IndexEntry> Broken()
+    {
+        yield return new DeskNest.Core.Services.SearchService.IndexEntry("C:\\new1.txt", false, 1, baseTime);
+        yield return new DeskNest.Core.Services.SearchService.IndexEntry("C:\\new2.txt", false, 2, baseTime);
+        throw new InvalidOperationException("模拟落盘中失败");
+    }
+    var threw = false;
+    try { idxRepo.SaveSearchIndex(Broken()); } catch (InvalidOperationException) { threw = true; }
+    Check("落盘失败会抛异常（不静默吞掉）", () => threw);
+    Check("落盘失败后旧索引完整保留（不残留半截）", () =>
+        idxRepo.LoadSearchIndex().Count == 3 && idxRepo.LoadSearchIndex().All(e => e.Path.EndsWith("a.txt") || e.Path.EndsWith("b.txt") || e.Path.EndsWith("c.txt")));
+    idxDb.Dispose();
+}
+
+Console.WriteLine("== 路径穿越校验（备份还原 / 素材包导入） ==");
+{
+    var parent = Path.Combine(root, "DeskNest");
+    var inside = Path.Combine(parent, "sub", "file.txt");
+    var sibling = Path.Combine(root, "DeskNest-evil", "payload.txt"); // 兄弟目录：StartsWith 会误判为在里面
+    Check("数据目录内的路径被接受", () => FileOps.IsUnder(inside, parent));
+    Check("兄弟目录前缀绕过被挡住", () => !FileOps.IsUnder(sibling, parent));
+    Check("路径本身等于根目录算在内", () => FileOps.IsUnder(parent, parent));
 }
 
 Console.WriteLine();

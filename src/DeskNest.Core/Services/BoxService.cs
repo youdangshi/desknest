@@ -39,16 +39,22 @@ public sealed class BoxService
             {
                 var path = item.StoredPath ?? item.SourcePath;
                 var result = _files.RestoreToOriginal(path, item.SourcePath);
-                if (result.Ok) restored++;
+                if (result.Ok) { restored++; _repo.DeleteItem(item.Id); }
                 else
                 {
                     failed++;
+                    // 文件还在存储区、但还原失败：绝不能连 item 记录一起删掉，
+                    // 否则文件成孤儿、界面再也看不到、没法重试。标记缺失让用户可见。
+                    item.IsMissing = true;
+                    _repo.Upsert(item);
                     Log.Warn($"还原失败：{path} → {item.SourcePath}（{result.Error}）");
                 }
             }
         }
 
-        _repo.DeleteBox(box.Id);
+        // 有失败项时保留盒子记录：里面还有用户能看到的失败项，可再次尝试删除。
+        // 调用方看到 StillInDatabase=true 会提示"删除未完成"，不会误报成功。
+        if (failed == 0) _repo.DeleteBox(box.Id);
 
         // 删完立刻回读一次：如果记录还在，说明这次写入被别的事务回滚了，
         // 界面必须把这件事说出来，而不是"看起来删了、刷新又回来"。
@@ -228,15 +234,18 @@ public sealed class BoxService
             {
                 var path = item.StoredPath ?? item.SourcePath;
                 var result = _files.MoveTo(path, desktop);
-                if (result.Ok) moved++;
+                if (result.Ok) { moved++; _repo.DeleteItem(item.Id); }
                 else
                 {
                     failed++;
+                    item.IsMissing = true;
+                    _repo.Upsert(item);
                     Log.Warn($"解散时还原失败：{path} → 桌面（{result.Error}）");
                 }
             }
         }
-        _repo.DeleteBox(box.Id);
+        // 同 Delete：有失败项就保留盒子与记录，避免文件成孤儿。
+        if (failed == 0) _repo.DeleteBox(box.Id);
         var stillThere = _repo.Box(box.Id) is not null;
         Log.Info($"解散盒子「{box.Name}」：{moved} 项回到桌面，失败 {failed} 项，记录仍在={stillThere}");
         return new DeleteResult(moved, failed, stillThere);

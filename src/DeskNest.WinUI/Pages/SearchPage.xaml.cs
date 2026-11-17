@@ -85,6 +85,7 @@ public sealed partial class SearchPage : Page
         if (q.Length == 0) { ShowHints(); return; }
 
         _cts?.Cancel();
+        _cts?.Dispose(); // 旧的只 Cancel 不 Dispose，快速连续输入会累积未释放的 CTS
         var cts = new CancellationTokenSource();
         _cts = cts;
         var token = cts.Token;

@@ -363,7 +363,10 @@ public sealed class Repository
             // 更不会被它的回滚一起带走——那正是"点了删除没反应"的一类成因。
             _db.InTransaction(() =>
             {
-                // DELETE 也在事务里：否则中途失败会留下一张空表，用户重启后搜索"什么都没了"
+                // DELETE 与全部 INSERT 必须在**同一个**事务里：
+                // 早先每 2000 条手动 COMMIT/BEGIN，第一批会把 DELETE 一起提交；
+                // 此后失败时外层的 ROLLBACK 只能回滚最后一批，留下"旧索引已清空、新索引只有 2000 条"的残缺库，
+                // 重启后搜索大面积失效。单事务下失败能完整回滚，宁可保留旧索引也不留残缺索引。
                 _db.Exec("DELETE FROM search_index;");
                 do
                 {
@@ -371,12 +374,6 @@ public sealed class Repository
                     _db.Exec("INSERT OR REPLACE INTO search_index(path,is_dir,size,mtime) VALUES($p,$d,$s,$m)",
                         ("$p", e.Path), ("$d", e.IsDirectory ? 1 : 0), ("$s", e.Size), ("$m", e.Modified.Ticks));
                     count++;
-                    if (count % 2000 == 0)
-                    {
-                        // 每 2000 条提交一次，避免一个事务太大；提交后紧接着开新事务
-                        _db.Exec("COMMIT;");
-                        _db.Exec("BEGIN;");
-                    }
                 } while (cursor.MoveNext());
             });
             Log.Info($"搜索索引已保存：{count} 条");

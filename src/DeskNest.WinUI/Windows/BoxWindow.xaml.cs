@@ -101,10 +101,25 @@ public sealed partial class BoxWindow : Window
         Activated += OnFirstActivated;
         Closed += (_, _) =>
         {
+            _statusTimer.Stop(); // 与 WidgetWindow 的 _tick.Stop() 对齐，避免闭包延迟释放
             App.BoxWindows.Remove(this);
             App.Log($"BoxWindow[{_box.Name}] Closed");
         };
+
+        // Alt+F4 / 系统关闭也要写回隐藏状态，否则库里仍记"显示中"，重启后盒子复活。
+        // 主动的 隐藏/删除/退出 走 _closingByApp 或 App.IsExiting 放行，避免误写库。
+        AppWindow.Closing += (_, e) =>
+        {
+            if (_closingByApp || App.IsExiting) return;
+            _box.IsHidden = true;
+            try { App.Repo?.Upsert(_box); } catch (Exception ex) { App.Log("系统关闭回写失败：" + ex.Message); }
+            App.NotifyBoxesChanged();
+            App.Log($"BoxWindow[{_box.Name}] 系统关闭 → 记隐藏");
+        };
     }
+
+    /// <summary>由 隐藏/删除 流程调用：关闭时不要再回写隐藏状态（流程自己已写）。</summary>
+    private bool _closingByApp;
 
     // ---------- 数据 ----------
 
@@ -692,6 +707,7 @@ public sealed partial class BoxWindow : Window
         try { App.Repo?.Upsert(_box); } catch (Exception ex) { App.Log("隐藏保存失败：" + ex.Message); }
         App.Log($"BoxWindow[{_box.Name}] 隐藏");
         App.NotifyBoxesChanged();
+        _closingByApp = true;
         Close();
     }
 
@@ -719,6 +735,7 @@ public sealed partial class BoxWindow : Window
             var extra = outcome.Failed > 0 ? $"，{outcome.Failed} 个文件还原失败（见日志）" : "";
             App.Log($"BoxWindow[{_box.Name}] 已删除，还原 {outcome.Restored} 个文件{extra}");
             App.NotifyBoxesChanged();
+            _closingByApp = true; // 盒子已删库，Closing 里绝不能再 Upsert 把它插回去
             Close();
         }
         catch (Exception ex)
