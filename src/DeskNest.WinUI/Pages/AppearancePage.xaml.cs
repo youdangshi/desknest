@@ -8,9 +8,9 @@ using Microsoft.UI.Xaml.Navigation;
 namespace DeskNest.WinUI.Pages;
 
 /// <summary>
-/// 外观与主题：配色方案 + 圆角，写 Core 设置（theme.desktop.*，与 WPF 版同一批键，互通），
+/// 外观与主题：配色方案 + 圆角 + 材质 + 不透明度，写 Core 设置（theme.desktop.*，与 WPF 版同一批键，互通），
 /// 改完立刻应用——不用重启，盒子窗口和主窗口当场变。
-/// 透明度/材质在 WinUI 下属窗口级合成（不能只调根元素透明度，会连文字一起淡），P4 先不做，页面上明说。
+/// 材质/不透明度走窗口级合成（见 WindowLook / WallpaperGlass）：Win10 无系统亚克力时降级为壁纸模拟磨砂。
 /// </summary>
 public sealed partial class AppearancePage : Page
 {

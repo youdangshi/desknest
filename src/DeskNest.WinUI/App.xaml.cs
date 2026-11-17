@@ -28,6 +28,13 @@ public partial class App : Application
     /// <summary>备份服务（数据页用）。</summary>
     internal static DeskNest.Core.Services.BackupService? Backup;
 
+    /// <summary>
+    /// 全盘搜索索引服务。主线此前只用了 SearchService.IndexEntry 这个类型，
+    /// StartIndexing/SaveSearchIndex 从未调用——搜索页的文件结果只能读到 WPF 旧版留下的索引，
+    /// 一旦清空就永久失效。这里正式接通（构建 + 落盘 + 退出收尾）。
+    /// </summary>
+    internal static DeskNest.Core.Services.SearchService? Search;
+
     /// <summary>主题键：配色方案（FollowSystem/Dark/Light/PureBlack/EyeCare）。</summary>
     internal const string KeyScheme = "theme.desktop.scheme";
     /// <summary>主题键：圆角（DIP）。</summary>
@@ -206,6 +213,7 @@ public partial class App : Application
     private const int TraySearch = 1002;
     private const int TrayToggleLayer = 1003;
     private const int TrayExit = 1004;
+    private const int TrayToggleIcons = 1005;
 
     /// <summary>托盘菜单项 ID，供 MainWindow 关闭拦截等复用。</summary>
     internal static int TrayCommandExit => TrayExit;
@@ -220,23 +228,36 @@ public partial class App : Application
                 new DeskNest.Native.Win32.TrayMenuItem(TrayShowMain, "打开主窗口"),
                 new DeskNest.Native.Win32.TrayMenuItem(TraySearch, "搜索…"),
                 new DeskNest.Native.Win32.TrayMenuItem(TrayToggleLayer, "显示 / 隐藏桌面盒与组件"),
+                new DeskNest.Native.Win32.TrayMenuItem(TrayToggleIcons, "显示 / 隐藏桌面图标"),
                 new DeskNest.Native.Win32.TrayMenuItem(0, "", IsSeparator: true),
                 new DeskNest.Native.Win32.TrayMenuItem(TrayExit, "退出桌巢")
             };
             // Ctrl+F 全局唤起搜索：热键注册在托盘的 STA 消息窗口上，回调切回 UI 线程。
             // 用枚举而非魔法数字；MOD_NOREPEAT 由 TrayIcon 注册时自动加上，防长按重复触发。
-            var searchHotKey = new DeskNest.Native.Win32.TrayHotKey(
-                (uint)DeskNest.Native.Win32.GlobalHotKey.Mods.Control, /* VK_F */ 0x46,
-                () => _uiQueue?.TryEnqueue(() =>
-                {
-                    OpenSearch();
-                    App.Log("Ctrl+F：唤起搜索");
-                }));
+            const uint MOD_CONTROL = 0x0002;   // GlobalHotKey.Mods.Control
+            const uint MOD_ALT = 0x0001;       // GlobalHotKey.Mods.Alt
+            var hotKeys = new[]
+            {
+                // Ctrl+F → 唤起搜索
+                new DeskNest.Native.Win32.TrayHotKey(MOD_CONTROL, /* VK_F */ 0x46,
+                    () => _uiQueue?.TryEnqueue(() =>
+                    {
+                        OpenSearch();
+                        Log("Ctrl+F：唤起搜索");
+                    }), Id: 1),
+                // Alt+` → 显隐桌面盒与组件（VK_OEM_3=0xC0）
+                new DeskNest.Native.Win32.TrayHotKey(MOD_ALT, 0xC0,
+                    () => _uiQueue?.TryEnqueue(() =>
+                    {
+                        ToggleDesktopLayer();
+                        Log("Alt+`：切换桌面层");
+                    }), Id: 2)
+            };
             _tray = new DeskNest.Native.Win32.TrayIcon(
                 iconPath, "桌巢 DeskNest", items,
                 id => _uiQueue?.TryEnqueue(() => OnTrayCommand(id)),
                 () => _uiQueue?.TryEnqueue(ShowMainWindow),
-                searchHotKey);
+                hotKeys);
             Log("托盘已初始化");
         }
         catch (Exception ex) { Log("托盘初始化失败：" + ex); }
@@ -260,6 +281,38 @@ public partial class App : Application
             Log("待办提醒已启动（每 60 秒扫描）");
         }
         catch (Exception ex) { Log("提醒启动失败：" + ex); }
+    }
+
+    /// <summary>
+    /// 后台启动全盘索引（与 WPF 冻结版同款：search.enabled / search.roots 设置键互通）。
+    /// 索引线程低优先级、不挡 UI；已入库的索引会先加载，所以启动时搜索立即可用。
+    /// </summary>
+    private static void InitSearchIndexing()
+    {
+        try
+        {
+            if (Search is null) return;
+            if (Settings?.Get("search.enabled", true) != true)
+            {
+                Log("全盘索引已在设置中关闭");
+                return;
+            }
+            // 库里已有索引就只加载、不重扫：省开机 CPU（334 万条全盘扫描很重）。
+            // 库里为空（如用户清空过）才后台重建——让"清空后重启会自动重建"成真。
+            var cached = Search.LoadFromStore();
+            if (cached > 0)
+            {
+                Log($"搜索索引已从缓存加载 {cached} 条，跳过本次全盘扫描");
+                return;
+            }
+            var raw = Settings?.Get<string?>("search.roots", null);
+            var roots = string.IsNullOrWhiteSpace(raw)
+                ? null // null = 所有固定磁盘
+                : raw!.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            Search.StartIndexing(roots);
+            Log("全盘索引已在后台启动");
+        }
+        catch (Exception ex) { Log("启动全盘索引失败：" + ex.Message); }
     }
 
     private static void ScanReminders()
@@ -292,6 +345,9 @@ public partial class App : Application
                 break;
             case TrayToggleLayer:
                 ToggleDesktopLayer();
+                break;
+            case TrayToggleIcons:
+                ToggleDesktopIcons();
                 break;
             case TrayExit:
                 ExitApp();
@@ -359,12 +415,26 @@ public partial class App : Application
         catch (Exception ex) { Log("切换桌面层失败：" + ex.Message); }
     }
 
+    /// <summary>切换 Windows 桌面图标显隐（托盘菜单用；Native 层已实现）。</summary>
+    private static void ToggleDesktopIcons()
+    {
+        try
+        {
+            var visible = DeskNest.Native.Win32.DesktopIcons.AreIconsVisible();
+            var ok = DeskNest.Native.Win32.DesktopIcons.SetVisible(!visible);
+            Log($"托盘：{(ok ? "切换" : "切换失败")}桌面图标显隐（原={(visible ? "显示" : "隐藏")}）");
+        }
+        catch (Exception ex) { Log("切换桌面图标失败：" + ex.Message); }
+    }
+
     /// <summary>真正退出：先收托盘，再关所有窗口，最后结束进程。</summary>
     internal static void ExitApp()
     {
         Log("ExitApp: begin");
         IsExiting = true;
         try { _reminderTimer?.Stop(); _reminderTimer = null; } catch (Exception ex) { Log("提醒定时器清理失败：" + ex.Message); }
+        // 索引 worker 可能正在写几百万条，Dispose 会等它收工并落盘（最多 20 秒），避免半截数据。
+        try { Search?.Dispose(); Search = null; } catch (Exception ex) { Log("索引服务清理失败：" + ex.Message); }
         try { _tray?.Dispose(); _tray = null; } catch (Exception ex) { Log("托盘清理失败：" + ex.Message); }
         try
         {
@@ -408,6 +478,7 @@ public partial class App : Application
                 Boxes = new DeskNest.Core.Services.BoxService(Repo, Files);
                 Settings = new DeskNest.Core.Services.SettingsService();
                 Backup = new DeskNest.Core.Services.BackupService(Settings);
+                Search = new DeskNest.Core.Services.SearchService(Repo);
                 Log("services ready");
             }
             catch (Exception ex)
@@ -424,6 +495,7 @@ public partial class App : Application
             _uiQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
             InitTray();
             InitReminders();
+            InitSearchIndexing();
 
             // P2：从数据库恢复所有"显示中"的盒子（与 WPF 版同库，位置/内容互通）。
             // 库里为空时保持桌面干净：概览页已有「新建收纳盒」与各类组件引导，

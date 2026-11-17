@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Runtime.InteropServices;
 using DeskNest.Core;
 
@@ -11,7 +12,7 @@ public sealed record TrayMenuItem(int Id, string Text, bool IsSeparator = false)
 /// 注册在托盘消息窗口上的全局热键。Mods/VirtualKey 用 Win32 值（见 GlobalHotKey.Mods 与 VK_*）。
 /// 复用托盘的 STA 消息窗口，省得为热键再起一条线程。
 /// </summary>
-public sealed record TrayHotKey(uint Mods, uint VirtualKey, Action OnPressed);
+public sealed record TrayHotKey(uint Mods, uint VirtualKey, Action OnPressed, int Id = 1);
 
 /// <summary>
 /// 系统托盘图标（Win32 Shell_NotifyIconW）。
@@ -38,7 +39,6 @@ public sealed class TrayIcon : IDisposable
     private const uint WmHotKey = 0x0312;
 
     private const int IconId = 1;
-    private const int HotKeyId = 1;
     private const uint NifMessage = 0x0001;
     private const uint NifIcon = 0x0002;
     private const uint NifTip = 0x0004;
@@ -67,7 +67,7 @@ public sealed class TrayIcon : IDisposable
     private readonly Action<int> _onCommand;
     private readonly Action _onActivate;
     private readonly string _iconPath;
-    private readonly TrayHotKey? _hotKey;
+    private readonly IReadOnlyList<TrayHotKey> _hotKeys;
     private readonly ManualResetEventSlim _ready = new(false);
     // 气泡文本无法直接塞进 PostMessage 的 IntPtr 参数，走队列由消息线程取。
     private readonly ConcurrentQueue<(string Title, string Text)> _balloons = new();
@@ -82,16 +82,16 @@ public sealed class TrayIcon : IDisposable
     /// <param name="items">右键菜单项。</param>
     /// <param name="onCommand">菜单项被选中的 Id。</param>
     /// <param name="onActivate">左键单击/双击托盘图标。</param>
-    /// <param name="hotKey">可选的全局热键（注册在托盘消息窗口上）；为 null 则不注册。</param>
+    /// <param name="hotKeys">可选的全局热键列表（注册在托盘消息窗口上）；为 null/空则不注册。</param>
     public TrayIcon(string iconPath, string tooltip, IReadOnlyList<TrayMenuItem> items,
-                    Action<int> onCommand, Action onActivate, TrayHotKey? hotKey = null)
+                    Action<int> onCommand, Action onActivate, IReadOnlyList<TrayHotKey>? hotKeys = null)
     {
         _iconPath = iconPath ?? "";
         _tooltip = tooltip ?? "DeskNest";
         _items = items ?? Array.Empty<TrayMenuItem>();
         _onCommand = onCommand ?? (_ => { });
         _onActivate = onActivate ?? (() => { });
-        _hotKey = hotKey;
+        _hotKeys = hotKeys ?? Array.Empty<TrayHotKey>();
 
         _thread = new Thread(Run)
         {
@@ -201,14 +201,14 @@ public sealed class TrayIcon : IDisposable
         else
             Log.Info("托盘图标已创建");
 
-        if (_hotKey is not null)
+        foreach (var hk in _hotKeys)
         {
-            // 自动加 MOD_NOREPEAT：否则长按 Ctrl+F 会持续产生 WM_HOTKEY，反复唤起搜索。
-            var mods = _hotKey.Mods | (uint)GlobalHotKey.Mods.NoRepeat;
-            if (RegisterHotKey(_hwnd, HotKeyId, mods, _hotKey.VirtualKey))
-                Log.Info($"全局热键已注册（mods={mods} vk={_hotKey.VirtualKey}）");
+            // 自动加 MOD_NOREPEAT：否则长按组合键会持续产生 WM_HOTKEY，反复触发。
+            var mods = hk.Mods | (uint)GlobalHotKey.Mods.NoRepeat;
+            if (RegisterHotKey(_hwnd, hk.Id, mods, hk.VirtualKey))
+                Log.Info($"全局热键已注册（id={hk.Id} mods={mods} vk={hk.VirtualKey}）");
             else
-                Log.Warn($"全局热键注册失败（可能被其他程序占用）：{Marshal.GetLastWin32Error()}");
+                Log.Warn($"全局热键注册失败（id={hk.Id}，可能被其他程序占用）：{Marshal.GetLastWin32Error()}");
         }
 
         _ready.Set();
@@ -244,11 +244,16 @@ public sealed class TrayIcon : IDisposable
                 self?.PumpBalloon();
                 return IntPtr.Zero;
             case WmHotKey:
-                // 只响应自己注册的热键 id：同一窗口将来若注册了别的热键，不会被误触发。
-                if (wParam.ToInt64() == HotKeyId && self?._hotKey is not null)
+                // 按 id 分发到对应热键，避免误触发其它热键。
+                if (self is not null)
                 {
-                    try { self._hotKey.OnPressed(); }
-                    catch (Exception ex) { Log.Warn("全局热键回调异常：" + ex.Message); }
+                    var id = wParam.ToInt32();
+                    var hk = self._hotKeys.FirstOrDefault(h => h.Id == id);
+                    if (hk is not null)
+                    {
+                        try { hk.OnPressed(); }
+                        catch (Exception ex) { Log.Warn($"全局热键回调异常（id={id}）：" + ex.Message); }
+                    }
                 }
                 return IntPtr.Zero;
             case WmClose:
@@ -258,7 +263,7 @@ public sealed class TrayIcon : IDisposable
             {
                 if (self is not null)
                 {
-                    if (self._hotKey is not null) UnregisterHotKey(hwnd, HotKeyId);
+                    foreach (var hk in self._hotKeys) UnregisterHotKey(hwnd, hk.Id);
                     var data = NewData(hwnd);
                     data.uFlags = 0;
                     Shell_NotifyIconW(NimDelete, ref data);

@@ -49,10 +49,16 @@ public sealed partial class DataPage : Page
         var idx = PageKit.Column(10);
         long idxCount = 0;
         try { idxCount = App.Db?.Count("search_index") ?? 0; } catch { }
-        idx.Children.Add(PageKit.InfoRow("已索引条目", $"{idxCount:N0} 条（全盘搜索用，不是你的文件）"));
-        idx.Children.Add(PageKit.ActionRow("重建 / 清空索引",
-            "索引随时可以重建；清空后再搜索会现建。数据库体积偏大时先清这里",
-            PageKit.Btn("清空索引", async (_, _) => await ClearSearchIndex())));
+        var indexing = App.Search?.IsIndexing == true;
+        idx.Children.Add(PageKit.InfoRow("已索引条目",
+            $"{idxCount:N0} 条（全盘搜索用，不是你的文件）" + (indexing ? " · 正在后台重建…" : "")));
+        idx.Children.Add(PageKit.ActionRow("重建索引",
+            "后台重新扫描所有固定磁盘，完成后自动保存；扫描期间搜索照常可用",
+            PageKit.Btn("重建", (_, _) => RebuildIndex())));
+        idx.Children.Add(PageKit.Divider());
+        idx.Children.Add(PageKit.ActionRow("清空索引",
+            "索引可随时重建；数据库体积偏大时清这里（会顺带压缩）",
+            PageKit.Btn("清空", async (_, _) => await ClearSearchIndex())));
         Host.Children.Add(PageKit.Card("搜索索引", idx));
 
         // 备份
@@ -123,6 +129,25 @@ public sealed partial class DataPage : Page
     /// 清空全盘搜索索引。索引是可再生的（下次搜索时重建），但 330 万行清完再做 VACUUM
     /// 要几十秒，所以确认框里说清楚，且放在后台线程跑。
     /// </summary>
+    private void RebuildIndex()
+    {
+        if (App.Search is null) return;
+        try
+        {
+            var raw = App.Settings?.Get<string?>("search.roots", null);
+            var roots = string.IsNullOrWhiteSpace(raw)
+                ? null
+                : raw!.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            App.Search.StartIndexing(roots);
+            App.Log("数据页：手动重建全盘索引");
+            // 重建页面以刷新"正在后台重建…"状态
+            Host.Children.Clear();
+            Build();
+            RefreshBackups();
+        }
+        catch (Exception ex) { App.Log("重建索引失败：" + ex.Message); }
+    }
+
     private async Task ClearSearchIndex()
     {
         var confirm = new ContentDialog

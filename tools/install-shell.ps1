@@ -28,12 +28,16 @@ if ($old) {
   Write-Host "Old version unregistered." -ForegroundColor DarkGray
 }
 
-# Fixed dir: overwrite in place, no timestamp dirs piling up.
+# Fixed active dir. Move the previous one aside with a unique name (never bulk-delete:
+# deleting hundreds of files trips the machine's bulk-delete guard). Old copies are kept,
+# user can remove them manually. Expand-Archive into an empty dir is reliable.
 $layout = Join-Path $env:LOCALAPPDATA "DeskNest\AppPackage"
 if (Test-Path $layout) {
-  $stale = Join-Path $env:LOCALAPPDATA "DeskNest\AppPackage.old"
-  if (Test-Path $stale) { try { Remove-Item $stale -Recurse -Force -ErrorAction Stop } catch { } }
-  try { Move-Item $layout $stale -Force -ErrorAction Stop } catch { }
+  $stale = Join-Path $env:LOCALAPPDATA ("DeskNest\AppPackage.prev-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+  try {
+    Move-Item $layout $stale -Force -ErrorAction Stop
+    Write-Host ("Previous install kept at: " + $stale) -ForegroundColor DarkGray
+  } catch { throw ("Could not move old install aside: " + $_.Exception.Message) }
 }
 New-Item -ItemType Directory -Path $layout -Force | Out-Null
 
@@ -46,10 +50,6 @@ Add-AppxPackage -Register (Join-Path $layout "AppxManifest.xml")
 
 $pkg = Get-AppxPackage -Name "DeskNest.Shell"
 if (-not $pkg) { throw "Registration failed." }
-
-# Clean last .old if possible (failure is harmless)
-$stale = Join-Path $env:LOCALAPPDATA "DeskNest\AppPackage.old"
-if (Test-Path $stale) { try { Remove-Item $stale -Recurse -Force -ErrorAction SilentlyContinue } catch { } }
 
 Write-Host ("Installed: " + $pkg.PackageFullName) -ForegroundColor Green
 Write-Host ("Location: " + $layout) -ForegroundColor DarkGray

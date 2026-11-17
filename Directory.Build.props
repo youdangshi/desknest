@@ -5,10 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <NoWarn>$(NoWarn);CA1416;CA1859</NoWarn>
-    <Version>1.0.0</Version>
+    <!-- 版本号唯一来源：所有项目（含 WinUI 主线）继承这里；发版只改这一处。
+         MSIX 的 AppxManifest.Shell.xml Identity/@Version 需同步（格式 x.x.x.0）。 -->
+    <Version>2.0.0</Version>
     <Company>DeskNest</Company>
     <Product>桌巢 DeskNest</Product>
-    <Copyright>MIT License</Copyright>
+    <Copyright>GPL-3.0 License</Copyright>
     <NeutralLanguage>zh-Hans</NeutralLanguage>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
   </PropertyGroup>

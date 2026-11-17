@@ -15,8 +15,9 @@ namespace DeskNest.WinUI.Windows;
 /// <summary>
 /// 桌面组件窗口（P5）。骨架与盒子窗口同一套：摘系统标题栏、挂桌面层（owner）、
 /// 手动增量拖动 + 吸附、收起/展开、位置存库（DIP，与 WPF 版互通）。
-/// 内容按 WidgetKind 分支：Glance（日期时间+统计）、Todo（待办）、QuickNote（便签）、
-/// SystemMonitor（CPU/内存/网络）。File / Weather / Music 尚未移植（见 docs/28 §11.4）。
+/// 内容按 WidgetKind 分支：Glance（日期时间+统计）、Todo（待办，含到点提醒设置）、
+/// QuickNote（便签）、SystemMonitor（CPU/内存/网络/GPU）、File（绑定盒子列文件）、
+/// Weather（Open-Meteo）、Music（媒体键控制）。七类组件均已实现（见 docs/28 §11.6）。
 /// </summary>
 public sealed partial class WidgetWindow : Window
 {
