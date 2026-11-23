@@ -22,6 +22,9 @@ public partial class App : Application
     /// <summary>盒子生命周期（删除盒子会先把文件还原回原位置）。</summary>
     internal static DeskNest.Core.Services.BoxService? Boxes;
 
+    /// <summary>桌面整理引擎（扫描→预览→执行→回滚），整理页用；与 WPF 版同一实现。</summary>
+    internal static DeskNest.Core.Services.OrganizeEngine? Organizer;
+
     /// <summary>设置（与 WPF 版共用 settings.json：theme.desktop.* 等键互通）。</summary>
     internal static DeskNest.Core.Services.SettingsService? Settings;
 
@@ -479,6 +482,7 @@ public partial class App : Application
                 Repo = new DeskNest.Core.Data.Repository(Db);
                 Files = new DeskNest.Core.Services.FileOps(Repo);
                 Boxes = new DeskNest.Core.Services.BoxService(Repo, Files);
+                Organizer = new DeskNest.Core.Services.OrganizeEngine(Repo, Files);
                 Settings = new DeskNest.Core.Services.SettingsService();
                 Backup = new DeskNest.Core.Services.BackupService(Settings);
                 Search = new DeskNest.Core.Services.SearchService(Repo);

@@ -84,6 +84,7 @@ public sealed partial class MainWindow : Microsoft.UI.Xaml.Window
             {
                 "search" => typeof(SearchPage),
                 "boxes" => typeof(BoxesPage),
+                "organize" => typeof(OrganizePage),
                 "appearance" => typeof(AppearancePage),
                 "data" => typeof(DataPage),
                 "about" => typeof(AboutPage),

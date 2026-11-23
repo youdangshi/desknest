@@ -23,6 +23,9 @@
                 <muxc:NavigationViewItem Content="收纳盒" Tag="boxes">
                     <muxc:NavigationViewItem.Icon><SymbolIcon Symbol="Folder"/></muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="整理桌面" Tag="organize">
+                    <muxc:NavigationViewItem.Icon><SymbolIcon Symbol="Sort"/></muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
                 <muxc:NavigationViewItem Content="外观与主题" Tag="appearance">
                     <muxc:NavigationViewItem.Icon><SymbolIcon Symbol="FontColor"/></muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>
