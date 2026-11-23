@@ -35,6 +35,9 @@ public partial class App : Application
     /// </summary>
     internal static DeskNest.Core.Services.SearchService? Search;
 
+    /// <summary>启动时审计未关账的文件意图记录（强杀/断电残留），只判定关账、不自动删文件。</summary>
+    internal static DeskNest.Core.Services.JournalRecovery? Recovery;
+
     /// <summary>主题键：配色方案（FollowSystem/Dark/Light/PureBlack/EyeCare）。</summary>
     internal const string KeyScheme = "theme.desktop.scheme";
     /// <summary>主题键：圆角（DIP）。</summary>
@@ -479,6 +482,7 @@ public partial class App : Application
                 Settings = new DeskNest.Core.Services.SettingsService();
                 Backup = new DeskNest.Core.Services.BackupService(Settings);
                 Search = new DeskNest.Core.Services.SearchService(Repo);
+                Recovery = new DeskNest.Core.Services.JournalRecovery(Repo);
                 Log("services ready");
             }
             catch (Exception ex)
@@ -493,6 +497,9 @@ public partial class App : Application
             Log("Activate called");
 
             _uiQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+            // 先审计上轮强杀/断电残留的文件意图，再恢复窗口：只判定关账、不自动删文件。
+            try { Recovery?.Audit(); } catch (Exception ex) { Log("启动审计失败：" + ex.Message); }
+
             InitTray();
             InitReminders();
             InitSearchIndexing();

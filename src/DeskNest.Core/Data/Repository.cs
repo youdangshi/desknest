@@ -329,10 +329,15 @@ public sealed class Repository
         }, ("$p", providerId), ("$s", since.ToString("o")));
 
     // ---------- Journal（意图记录：断电/强杀后可续做或回滚） ----------
-    public void Journal(string kind, object payload) => _db.Exec(
-        "INSERT INTO journal VALUES($id,$k,$p,$c,$a)",
-        ("$id", Guid.NewGuid().ToString("n")), ("$k", kind), ("$p", JsonSerializer.Serialize(payload, J)),
-        ("$c", DateTimeOffset.Now.ToString("o")), ("$a", 0));
+    /// <summary>写一条"我要动这个文件了"的意图记录，返回 id 供操作成功后 CloseJournal 关账。</summary>
+    public string Journal(string kind, object payload)
+    {
+        var id = Guid.NewGuid().ToString("n");
+        _db.Exec("INSERT INTO journal VALUES($id,$k,$p,$c,$a)",
+            ("$id", id), ("$k", kind), ("$p", JsonSerializer.Serialize(payload, J)),
+            ("$c", DateTimeOffset.Now.ToString("o")), ("$a", 0));
+        return id;
+    }
 
     public void CloseJournal(string id) => _db.Exec("UPDATE journal SET applied=1 WHERE id=$id", ("$id", id));
     public List<(string Id, string Kind, string Payload)> OpenJournals() => _db.Query(

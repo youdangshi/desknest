@@ -63,10 +63,12 @@ public sealed class FileOps
             if (!Exists(sourcePath)) return OpResult.Fail($"源不存在：{sourcePath}");
             if (IsUnder(sourcePath, storageRoot)) return OpResult.Fail("源文件已在目标目录内，已跳过");
 
-            _repo.Journal("move-in", new { source = sourcePath, root = storageRoot });
             var name = Path.GetFileName(sourcePath.TrimEnd('\\'));
             var target = UniquePath(storageRoot, name);
+            // 意图记录必须带上最终 target（含重名后缀），否则崩溃后无法定位文件是"还没搬"还是"搬完了"。
+            var journalId = _repo.Journal("move-in", new { source = sourcePath, root = storageRoot, target });
             MoveOrCopy(sourcePath, target);
+            _repo.CloseJournal(journalId);
             return OpResult.Success(target);
         }
         catch (Exception ex)
@@ -92,8 +94,9 @@ public sealed class FileOps
                 Log.Info($"原目录不存在，回退桌面：{dir}");
             }
             var target = UniquePath(dir, Path.GetFileName(effectiveOriginal) ?? Path.GetFileName(storedPath) ?? "restored");
-            _repo.Journal("restore", new { stored = storedPath, target });
+            var journalId = _repo.Journal("restore", new { stored = storedPath, target });
             MoveOrCopy(storedPath, target);
+            _repo.CloseJournal(journalId);
             return OpResult.Success(target);
         }
         catch (Exception ex)
@@ -112,8 +115,9 @@ public sealed class FileOps
             if (IsUnder(sourcePath, targetDirectory)) return OpResult.Fail("源已在目标目录内");
             var name = newName ?? Path.GetFileName(sourcePath.TrimEnd('\\'));
             var target = UniquePath(targetDirectory, name);
-            _repo.Journal("move", new { from = sourcePath, to = target });
+            var journalId = _repo.Journal("move", new { from = sourcePath, to = target });
             MoveOrCopy(sourcePath, target);
+            _repo.CloseJournal(journalId);
             return OpResult.Success(target);
         }
         catch (Exception ex)

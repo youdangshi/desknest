@@ -500,6 +500,56 @@ Console.WriteLine("== 文件还原健壮性：原始路径缺失时仍能还原 
     Check("还原目标内容正确", () => restored.Ok && File.Exists(restored.StoredPath!) && File.ReadAllText(restored.StoredPath!) == "hello");
 }
 
+Console.WriteLine("== 文件意图记录：成功后关账 ==");
+{
+    var jRoot = Path.Combine(root, "journal-store");
+    var src = Path.Combine(root, "journal-src.txt");
+    File.WriteAllText(src, "move me");
+    var before = repo.OpenJournals().Count;
+    var r = files.MoveIntoStorage(src, jRoot);
+    Check("MoveIntoStorage 成功", () => r.Ok && File.Exists(r.StoredPath!));
+    Check("成功后 journal 已关账（未关账数不增加）", () => repo.OpenJournals().Count == before);
+    var stored = r.StoredPath!;
+    files.RestoreToOriginal(stored, src);
+}
+
+Console.WriteLine("== 启动审计 JournalRecovery：四种状态 ==");
+{
+    // 测试隔离：把前面各段留下的 open journal 先全部关账，保证下面只统计本段造的 4 条。
+    foreach (var j in repo.OpenJournals()) repo.CloseJournal(j.Id);
+
+    var auditRoot = Path.Combine(root, "journal-audit");
+    Directory.CreateDirectory(auditRoot);
+    var srcKept = Path.Combine(auditRoot, "src-kept.txt");      // 源在、目标不在 → 关账
+    var both = Path.Combine(auditRoot, "both.txt");             // 源在、目标在 → 关账+提示，不删
+    var doneSrc = Path.Combine(auditRoot, "done-src.txt");      // 源不在、目标在 → 关账
+    var doneDst = Path.Combine(auditRoot, "done-dst.txt");
+    var lostSrc = Path.Combine(auditRoot, "lost-src.txt");      // 都不在 → 保留 open
+    var lostDst = Path.Combine(auditRoot, "lost-dst.txt");
+    File.WriteAllText(srcKept, "k");
+    File.WriteAllText(both, "b");
+    File.WriteAllText(Path.Combine(auditRoot, "both-target.txt"), "b-copy");
+    File.WriteAllText(doneDst, "d");
+
+    repo.Journal("move", new { from = srcKept, to = Path.Combine(auditRoot, "kept-target.txt") });
+    repo.Journal("move", new { from = both, to = Path.Combine(auditRoot, "both-target.txt") });
+    repo.Journal("move", new { from = doneSrc, to = doneDst });
+    var lostId = repo.Journal("move", new { from = lostSrc, to = lostDst });
+
+    var recovery = new DeskNest.Core.Services.JournalRecovery(repo);
+    var report = recovery.Audit();
+    Check("审计统计：4 条未关账，关账 3、保留 1", () => report.Open == 4 && report.Closed == 3 && report.KeptOpen == 1);
+    Check("源与目标都在时：不删除任何文件", () => File.Exists(both) && File.Exists(Path.Combine(auditRoot, "both-target.txt")));
+    Check("源在目标不在时：源文件保留", () => File.Exists(srcKept));
+    Check("都不在的记录保持未关账（可人工看见）", () =>
+        repo.OpenJournals().Any(j => j.Id == lostId));
+    Check("审计可重复调用：第二次无未关账可处理", () =>
+    {
+        var again = recovery.Audit();
+        return again.Closed == 0 && again.KeptOpen >= 1;
+    });
+}
+
 Console.WriteLine("== 待办到点提醒 + 重复任务（TodoReminderEngine） ==");
 {
     var now = new DateTimeOffset(2026, 11, 16, 10, 0, 0, TimeSpan.Zero);
